@@ -1,0 +1,10 @@
+{
+  "name": "joolry-order-fms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Joolry Order FMS — Staff App + Snapshot API",
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "@vercel/functions": "^1.0.0"
+  }
+}
