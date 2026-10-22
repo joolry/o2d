@@ -1,4 +1,4 @@
-/* JOOLRY Order FMS — Luxury black / cream / gold */
+/* JOOLRY Order FMS v2.2 — Luxury black / cream / gold */
 :root {
   --ink: #0a0a0a;
   --ink2: #1c1c1c;
@@ -82,12 +82,13 @@ body {
   padding: 12px 20px; display: flex; align-items: center; gap: 20px;
   position: sticky; top: 0; z-index: 40; flex-wrap: wrap;
 }
+.brand { display: flex; align-items: center; gap: 10px; }
 .brand-name {
   font-family: var(--display); font-size: 22px; font-weight: 700;
   letter-spacing: .1em;
 }
 .brand-tag { font-size: 11px; opacity: .55; margin-left: 8px; letter-spacing: .06em; }
-.nav-tabs { display: flex; gap: 4px; flex: 1; }
+.nav-tabs { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
 .nav-btn {
   background: transparent; border: none; color: rgba(255,255,255,.55);
   padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
@@ -237,7 +238,7 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: v
 
 .box-row {
   background: var(--card); border-radius: 10px; padding: 12px; margin-bottom: 8px;
-  border-left: 3px solid var(--border); border: 1px solid var(--border); border-left-width: 3px;
+  border: 1px solid var(--border); border-left-width: 3px;
 }
 .box-row.done { border-left-color: var(--ok); opacity: .9; }
 .box-row.late { border-left-color: var(--late); }
@@ -264,16 +265,6 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: v
 
 .empty, .loading { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
 
-@media (max-width: 900px) {
-  .dash-grid { grid-template-columns: 1fr; }
-  .kanban-board { grid-template-columns: repeat(5, 260px); }
-  .nav-tabs { order: 3; width: 100%; }
-  .topbar { gap: 10px; }
-}
-
-/* v2.1 extras */
-.brand { display: flex; align-items: center; gap: 10px; }
-.brand-logo { height: 28px; width: auto; filter: brightness(0) invert(1); }
 .global-loading {
   background: var(--gold); color: var(--ink); text-align: center;
   font-size: 12px; font-weight: 600; padding: 6px; letter-spacing: .04em;
@@ -288,4 +279,10 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: v
 .work-card.late { border-left: 3px solid var(--late); }
 .work-main { flex: 1; cursor: pointer; min-width: 180px; }
 .muted { color: var(--muted); font-weight: 400; }
-.admin-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+
+@media (max-width: 900px) {
+  .dash-grid { grid-template-columns: 1fr; }
+  .kanban-board { grid-template-columns: repeat(5, 260px); }
+  .nav-tabs { order: 3; width: 100%; }
+  .topbar { gap: 10px; }
+}
