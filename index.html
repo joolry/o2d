@@ -36,9 +36,9 @@
       </div>
       <nav class="nav-tabs" id="nav-tabs">
         <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')">Dashboard</button>
-        <button class="nav-btn" data-view="fms" onclick="App.setView('fms')">FMS Sheet</button>
-        <button class="nav-btn" data-view="mywork" data-need="ops" onclick="App.setView('mywork')">My Work</button>
-        <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')">Kanban</button>
+        <button class="nav-btn" data-view="mywork" data-need="ops" onclick="App.setView('mywork')">Pending Works</button>
+        <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')">By Stages</button>
+        <button class="nav-btn" data-view="fms" onclick="App.setView('fms')">All Orders</button>
         <button class="nav-btn" data-view="late" onclick="App.setView('late')">Late</button>
         <button class="nav-btn" data-view="manual" data-need="ops" onclick="App.setView('manual')">+ Order</button>
         <button class="nav-btn" data-view="activity" data-need="admin" onclick="App.setView('activity')">Activity</button>
@@ -67,8 +67,9 @@
       </div>
     </section>
 
-    <!-- FMS SHEET (classic Pln / Act grid) -->
+    <!-- ALL ORDERS (classic Pln / Act grid) -->
     <section id="view-fms" class="view" style="display:none">
+      <p class="view-hint">All Orders — full stage grid (Planned vs Actual).</p>
       <div class="fms-toolbar">
         <input id="fms-search" type="search" placeholder="Search order / client / city…" oninput="App.renderFmsSheet()" />
         <select id="fms-filter" onchange="App.renderFmsSheet()">
@@ -91,10 +92,10 @@
               <th>Client</th>
               <th>Value</th>
               <th>City</th>
-              <th colspan="2" class="box-head">Box 2 · Availability</th>
-              <th colspan="2" class="box-head">Box 3 · Pack &amp; Dispatch</th>
-              <th colspan="2" class="box-head">Box 4 · Client Update</th>
-              <th colspan="2" class="box-head">Box 5 · Shopify</th>
+              <th colspan="2" class="box-head">1. Availability</th>
+              <th colspan="2" class="box-head">2. Pack &amp; Dispatch</th>
+              <th colspan="2" class="box-head">3. Client Update</th>
+              <th colspan="2" class="box-head">4. Shopify Status</th>
               <th>Status</th>
             </tr>
             <tr class="sub-head">
@@ -111,16 +112,17 @@
       </div>
     </section>
 
-    <!-- MY WORK -->
+    <!-- PENDING WORKS -->
     <section id="view-mywork" class="view" style="display:none">
-      <p class="view-hint">Orders where your next box is pending (Allowed Boxes).</p>
+      <p class="view-hint">Pending Works — orders jahaan aapka next step pending hai.</p>
       <div id="mywork-list" class="work-list"></div>
     </section>
 
-    <!-- KANBAN -->
+    <!-- PENDING ORDERS BY STAGES -->
     <section id="view-kanban" class="view" style="display:none">
+      <p class="view-hint">Pending Orders by Stages — sirf aapke allowed stages dikhenge. Next step tabhi unlock hoga jab previous complete ho.</p>
       <div class="kanban-toolbar">
-        <input id="kanban-search" type="search" placeholder="Search…" oninput="App.renderKanban()" />
+        <input id="kanban-search" type="search" placeholder="Search order / client…" oninput="App.renderKanban()" />
         <select id="kanban-filter" onchange="App.renderKanban()">
           <option value="open">Open</option>
           <option value="mine">My work</option>
@@ -204,11 +206,11 @@
           <button class="btn primary" onclick="App.saveOrderEdit()">Save</button>
         </div>
       </div>
-      <h3>Line items</h3>
+      <h3>Order Items</h3>
       <div id="d-items" class="items-box"></div>
-      <h3>Boxes</h3>
+      <h3>Steps (Sequential)</h3>
       <div id="d-boxes"></div>
-      <h3>Courier</h3>
+      <h3>Courier / Tracking</h3>
       <div class="form-grid">
         <input id="d-courier" placeholder="Courier" />
         <input id="d-awb" placeholder="AWB / Tracking" />
