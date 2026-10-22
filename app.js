@@ -1,4 +1,5 @@
-// JOOLRY Order FMS v2.1
+// JOOLRY Order FMS v2.2 — Ready Product Website Order
+// Boxes: 2=Availability | 3=Pack & Dispatch | 4=Client Update | 5=Shopify Fulfil
 (function () {
   'use strict';
   const C = window.Core;
@@ -23,6 +24,14 @@
     { key: 'box5', n: 5, label: 'Shopify Fulfil' },
     { key: 'done', n: 0, label: 'Done / Closed' }
   ];
+
+  const STAGE_LABELS = {
+    box2: 'Availability',
+    box3: 'Pack & Dispatch',
+    box4: 'Client Update',
+    box5: 'Shopify Fulfil',
+    done: 'Done'
+  };
 
   function isAdmin() {
     return state.user && String(state.user.role || '').toLowerCase() === 'admin';
@@ -98,7 +107,6 @@
     showLogin();
   }
 
-  /** One-tap refresh — no secret prompt */
   async function refresh() {
     setLoading(true);
     try {
@@ -113,7 +121,6 @@
         state.steps = (bootRes.steps) || [];
         computeAllowed();
       } else {
-        // fallback: getSteps
         const st = await rpc('getSteps', []);
         if (st && st.success) state.steps = st.steps || [];
         computeAllowed();
@@ -162,6 +169,7 @@
     const s = String(o.overallStatus || '').toLowerCase();
     return s !== 'closed' && s !== 'done';
   }
+
   function worstDelay(o) {
     let w = 0;
     [o.box2, o.box3, o.box4, o.box5].forEach(b => {
@@ -172,6 +180,7 @@
     });
     return w;
   }
+
   function currentStage(o) {
     if (!isOpen(o)) return 'done';
     const cb = String(o.currentBox || '').toLowerCase();
@@ -181,10 +190,13 @@
     if (cb.indexOf('5') >= 0) return 'box5';
     if (!o.box2 || !o.box2.actual) return 'box2';
     if (!o.box3 || !o.box3.actual) return 'box3';
-    if (!o.box4 || !o.box4.actual) return 'box4';
+    // Box 4 is conditional — if courier auto-update = Yes, skip to box5
+    const auto = String(o.courierAutoUpdate || '').toLowerCase() === 'yes';
+    if (!auto && (!o.box4 || !o.box4.actual)) return 'box4';
     if (!o.box5 || !o.box5.actual) return 'box5';
     return 'done';
   }
+
   function orderNeedsMyBox(o) {
     if (!isOpen(o)) return false;
     const st = currentStage(o);
@@ -267,7 +279,6 @@
       $('#mywork-list').innerHTML = '<div class="empty">No tasks assigned to you right now</div>';
       return;
     }
-    const stageLabels = { box2: 'Availability', box3: 'Pack & Dispatch', box4: 'Client Update', box5: 'Shopify Fulfil' };
     $('#mywork-list').innerHTML = list.map(o => {
       const st = currentStage(o);
       const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
@@ -277,7 +288,7 @@
           <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
             <div class="k-id">${esc(o.orderId)} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
             <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
-            <div class="k-meta">${stageLabels[st] || st} ${d > 0 ? '· <span class="badge late">+' + d.toFixed(1) + 'h</span>' : ''}</div>
+            <div class="k-meta">${STAGE_LABELS[st] || st} ${d > 0 ? '· <span class="badge late">+' + d.toFixed(1) + 'h</span>' : ''}</div>
           </div>
           ${n && canDoBox(n) ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Box ${n} Done</button>` : ''}
         </div>`;
@@ -330,10 +341,10 @@
     if (q) {
       list = list.filter(o =>
         String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
-        String(o.clientName || '').toLowerCase().indexOf(q) >= 0
+        String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
+        String(o.shopifyNo || '').toLowerCase().indexOf(q) >= 0
       );
     }
-    const stageLabels = { box2: 'Availability', box3: 'Pack/Dispatch', box4: 'Client update', box5: 'Shopify', done: 'Done' };
     $('#table-body').innerHTML = list.map(o => {
       const d = worstDelay(o);
       const st = currentStage(o);
@@ -342,7 +353,7 @@
         <td>${esc(o.clientName || '—')}</td>
         <td>${money(o.orderValue)}</td>
         <td>${esc(o.city || '—')}</td>
-        <td>${stageLabels[st] || st}</td>
+        <td>${STAGE_LABELS[st] || st}</td>
         <td>${esc(o.overallStatus || '—')}</td>
         <td>${d > 0 ? '<span class="badge late">+' + d.toFixed(1) + 'h</span>' : '<span class="badge ok">OK</span>'}</td>
       </tr>`;
@@ -372,13 +383,12 @@
       { l: 'Done', v: counts.done, c: 'ok' }
     ]);
     $('#an-value').innerHTML = barHtml([
-      { l: 'Avail', v: Math.round(vals.box2), c: '', sfx: '' },
+      { l: 'Avail', v: Math.round(vals.box2), c: '' },
       { l: 'Pack', v: Math.round(vals.box3), c: 'gold' },
       { l: 'Client', v: Math.round(vals.box4), c: 'rose' },
       { l: 'Shopify', v: Math.round(vals.box5), c: 'ok' },
       { l: 'Done', v: Math.round(vals.done), c: 'ok' }
     ]);
-    // boxes marked done in current data
     let b2 = 0, b3 = 0, b4 = 0, b5 = 0;
     state.orders.forEach(o => {
       if (o.box2 && String(o.box2.status).toLowerCase() === 'done') b2++;
@@ -393,17 +403,10 @@
   }
 
   function renderAdmin() {
-    // users from last boot if any — show from orders doneBy unique as fallback
-    const names = {};
-    state.orders.forEach(o => {
-      [o.box2, o.box3, o.box4, o.box5].forEach(b => {
-        if (b && b.doneBy) names[b.doneBy] = true;
-      });
-    });
     $('#admin-users').innerHTML = `
       <div class="mini-item"><span>Logged in as <strong>${esc(state.user.username)}</strong> (${esc(state.user.role)})</span></div>
-      <div class="mini-item"><span>Allowed boxes: Admin = all (2–5)</span></div>
-      <div class="view-hint">Users tab in sheet is source of truth for login & roles.</div>
+      <div class="mini-item"><span>Allowed boxes: <strong>Admin = all (2–5)</strong></span></div>
+      <div class="view-hint" style="margin-top:10px">Users tab in Google Sheet is source of truth for login & roles.<br>Steps → Allowed Usernames controls who can mark which box.</div>
     `;
     const open = state.orders.filter(isOpen);
     $('#admin-orders').innerHTML = open.slice(0, 30).map(o => `
@@ -447,6 +450,7 @@
       <div><label>Payment</label><div>${esc(o.paymentMode || '—')}</div></div>
       <div><label>Status</label><div>${esc(o.overallStatus || '—')}</div></div>
       <div><label>Current</label><div>${esc(o.currentBox || '—')}</div></div>
+      <div><label>Entry</label><div>${fmtDate(o.entryTime)}</div></div>
     `;
 
     const adminEdit = $('#d-admin-edit');
@@ -468,10 +472,10 @@
       : '<div class="empty">No items</div>';
 
     const boxes = [
-      { n: 2, label: 'Availability', data: o.box2 },
-      { n: 3, label: 'Pack & Dispatch', data: o.box3 },
-      { n: 4, label: 'Client Update', data: o.box4 },
-      { n: 5, label: 'Shopify Fulfil', data: o.box5 }
+      { n: 2, label: 'Product Availability Check', data: o.box2 },
+      { n: 3, label: 'Order Packing & Dispatch', data: o.box3 },
+      { n: 4, label: 'Client Update (if no auto)', data: o.box4 },
+      { n: 5, label: 'Update Delivery Status in Shopify', data: o.box5 }
     ];
     $('#d-boxes').innerHTML = boxes.map(b => {
       const d = b.data || {};
@@ -499,7 +503,6 @@
         </div>`;
     }).join('');
 
-    // courier: admin or anyone on box 3/4 style — allow if admin or has any box access
     const canCourier = isAdmin() || state.allowedBoxes.length > 0;
     $('#d-courier').value = o.courier || '';
     $('#d-awb').value = o.awb || '';
@@ -548,6 +551,8 @@
       ]);
       if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
       toast('Courier saved', 'ok');
+      await openOrder(state.selected.orderId);
+      await refresh();
     } finally { setLoading(false); }
   }
 
