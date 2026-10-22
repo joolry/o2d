@@ -40,7 +40,8 @@
   async function rpc(fn, args, timeout) {
     const token = getToken();
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), timeout || CFG.DEFAULT_TIMEOUT || 30000);
+    const ms = timeout || CFG.DEFAULT_TIMEOUT || 45000;
+    const t = setTimeout(() => ctl.abort(), ms);
 
     try {
       const base = (CFG.API_BASE || '').replace(/\/$/, '');
@@ -54,14 +55,25 @@
         },
         body: JSON.stringify({ fn, args: args || [] })
       });
-      const data = await r.json();
+      if (!r.ok) {
+        return { success: false, error: 'Server error ' + r.status + ' — try again' };
+      }
+      let data;
+      try {
+        data = await r.json();
+      } catch (parseErr) {
+        return { success: false, error: 'Invalid response from server' };
+      }
       if (data && data.error === 'Session expired. Please login again.') {
         clearSession();
         location.reload();
       }
       return data;
     } catch (e) {
-      return { success: false, error: e.name === 'AbortError' ? 'Timeout' : (e.message || 'Network error') };
+      if (e.name === 'AbortError') {
+        return { success: false, error: 'Timeout — network slow, please retry' };
+      }
+      return { success: false, error: e.message || 'Network error — check internet' };
     } finally {
       clearTimeout(t);
     }
