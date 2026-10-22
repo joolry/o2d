@@ -1,4 +1,4 @@
-// JOOLRY Order FMS v2.6 — Strict board: only allowed columns + actions
+// JOOLRY Order FMS v2.7 — Sidebar + auto-refresh + insights
 (function () {
   'use strict';
   const C = window.Core;
@@ -9,6 +9,11 @@
   let state = {
     user: null, orders: [], steps: [], allowedBoxes: [],
     view: 'dashboard', selected: null, loading: false
+  };
+  let pollTimer = null;
+  const VIEW_TITLES = {
+    dashboard: 'Dashboard', mywork: 'Pending Works', kanban: 'By Stages',
+    fms: 'All Orders', late: 'Late Orders'
   };
 
   const BOX_COLS = [
@@ -83,34 +88,60 @@
   }
   function showApp() {
     $('#login-screen').style.display = 'none';
-    $('#app-screen').style.display = 'block';
+    $('#app-screen').style.display = 'flex';
     if (state.user) {
-      $('#user-name').textContent = state.user.name || state.user.username;
+      const name = state.user.name || state.user.username || state.user.email || '—';
       const boxes = isAdmin() ? 'all' : (state.allowedBoxes || []).join(',') || 'none';
-      $('#user-role').textContent = (state.user.role || '') + ' · ' + boxes;
+      const roleTxt = (state.user.role || '') + ' · ' + boxes;
+      if ($('#user-name')) $('#user-name').textContent = name;
+      if ($('#user-role')) $('#user-role').textContent = roleTxt;
+      const av = $('#user-avatar');
+      if (av) {
+        const parts = String(name).trim().split(/\s+/);
+        av.textContent = ((parts[0] && parts[0][0]) || 'U') + ((parts[1] && parts[1][0]) || '');
+      }
     }
     applyNavAccess();
-    // Ops with boxes → land on Kanban board (main working view)
+    startAutoRefresh();
     if (hasAnyBox() && !isAdmin() && !isViewer()) {
       setView('kanban');
+    } else {
+      setView('dashboard');
     }
+  }
+
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    const sec = (window.APP_CONFIG && window.APP_CONFIG.POLL_INTERVAL) || 45000;
+    pollTimer = setInterval(() => {
+      if (!state.loading && getToken()) refresh(true);
+    }, sec);
+    const badge = $('#auto-badge');
+    if (badge) { badge.textContent = '● Live'; badge.classList.remove('off'); }
+  }
+  function stopAutoRefresh() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+  function toggleSidebar() {
+    const sb = $('#sidebar');
+    if (sb) sb.classList.toggle('open');
   }
 
   /** Strict nav: only show tabs the user actually needs */
   function applyNavAccess() {
     const show = {
       dashboard: true,
-      fms: isAdmin() || isViewer(),       // Ops: hide full FMS sheet (use Kanban instead)
-      mywork: hasAnyBox() && !isViewer(), // only if they have boxes
+      mywork: hasAnyBox() && !isViewer(),
       kanban: true,
       late: true,
-      manual: canManual() && !isViewer(),
-      activity: isAdmin(),
-      admin: isAdmin()
+      fms: true
     };
     $$('.nav-btn').forEach(btn => {
       const v = btn.dataset.view;
-      btn.style.display = show[v] ? '' : 'none';
+      if (!v) return;
+      btn.style.display = show[v] !== false ? '' : 'none';
+      if (show[v] === false) btn.style.display = 'none';
+      else btn.style.display = '';
     });
   }
 
@@ -130,13 +161,14 @@
     await refresh();
   }
   function doLogout() {
+    stopAutoRefresh();
     clearSession();
     state = { user: null, orders: [], steps: [], allowedBoxes: [], view: 'dashboard', selected: null, loading: false };
     showLogin();
   }
 
-  async function refresh() {
-    setLoading(true);
+  async function refresh(silent) {
+    if (!silent) setLoading(true);
     try {
       const [ordRes, bootRes] = await Promise.all([
         rpc('getOrders', ['all'], 60000),
@@ -158,8 +190,7 @@
       }
       applyNavAccess();
       renderAll();
-      if (state.view === 'activity' && isAdmin()) loadActivity();
-    } finally { setLoading(false); }
+          } finally { if (!silent) setLoading(false); }
   }
 
   function computeAllowed() {
@@ -184,26 +215,25 @@
     if (hasAnyBox() && !isViewer()) renderMyWork();
     renderKanban();
     renderLate();
-    if (isAdmin()) renderAdmin();
   }
 
   function setView(v) {
-    // hard gate
-    if ((v === 'admin' || v === 'activity') && !isAdmin()) { toast('Admin only', 'error'); return; }
-    if (v === 'manual' && !canManual()) { toast('No access', 'error'); return; }
     if (v === 'mywork' && (isViewer() || !hasAnyBox())) { toast('No tasks for you', 'error'); return; }
     state.view = v;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-    ['dashboard','fms','mywork','kanban','late','manual','activity','admin'].forEach(id => {
+    ['dashboard','fms','mywork','kanban','late'].forEach(id => {
       const el = $('#view-' + id);
       if (el) el.style.display = id === v ? 'block' : 'none';
     });
-    if (v === 'activity') loadActivity();
+    const title = $('#topbar-title');
+    if (title) title.textContent = VIEW_TITLES[v] || v;
+    // close mobile sidebar
+    const sb = $('#sidebar');
+    if (sb) sb.classList.remove('open');
     if (v === 'fms') renderFmsSheet();
     if (v === 'late') renderLate();
     if (v === 'mywork') renderMyWork();
     if (v === 'kanban') {
-      // Ops default filter = mine
       const filterEl = $('#kanban-filter');
       if (filterEl && hasAnyBox() && !isAdmin() && !filterEl._touched) {
         filterEl.value = 'mine';
@@ -211,6 +241,7 @@
       }
       renderKanban();
     }
+    if (v === 'dashboard') renderDashboard();
   }
 
   function isOpen(o) {
@@ -340,11 +371,60 @@
       ? open.filter(orderNeedsMyBox).filter(o => worstDelay(o) > 0)
       : open.filter(o => worstDelay(o) > 0);
     const attn = attnSrc.sort((a, b) => worstDelay(b) - worstDelay(a)).slice(0, 10);
-    $('#attention-list').innerHTML = attn.length
+    const attnEl = $('#attention-list');
+    if (attnEl) attnEl.innerHTML = attn.length
       ? attn.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
           <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
           <span class="badge late">+${worstDelay(o).toFixed(1)}h</span></div>`).join('')
       : '<div class="empty">No delayed work 🎉</div>';
+
+    // My Workload chart
+    const mineEl = $('#chart-mine');
+    if (mineEl) {
+      const mineOpen = open.filter(orderNeedsMyBox);
+      const mineLate = mineOpen.filter(o => worstDelay(o) > 0);
+      mineEl.innerHTML = barHtml([
+        { l: 'My pending', v: mineOpen.length, c: 'gold' },
+        { l: 'My late', v: mineLate.length, c: 'late' },
+        { l: 'Others open', v: Math.max(0, open.length - mineOpen.length) }
+      ]);
+    }
+
+    // Value by stage
+    const valEl = $('#chart-value');
+    if (valEl) {
+      const valBy = { box2: 0, box3: 0, box4: 0, box5: 0 };
+      open.forEach(o => {
+        const st = currentStage(o);
+        if (valBy[st] !== undefined) valBy[st] += parseFloat(o.orderValue) || 0;
+      });
+      valEl.innerHTML = barHtml([
+        { l: 'Availability', v: Math.round(valBy.box2 / 1000), c: '' },
+        { l: 'Pack (₹k)', v: Math.round(valBy.box3 / 1000), c: 'gold' },
+        { l: 'Client (₹k)', v: Math.round(valBy.box4 / 1000), c: 'rose' },
+        { l: 'Shopify (₹k)', v: Math.round(valBy.box5 / 1000), c: 'ok' }
+      ]);
+    }
+
+    // Recent open orders
+    const recentEl = $('#recent-list');
+    if (recentEl) {
+      const recent = open.slice().sort((a, b) => String(b.entryTime || '').localeCompare(String(a.entryTime || ''))).slice(0, 8);
+      recentEl.innerHTML = recent.length
+        ? recent.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
+            <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
+            <span class="badge">${esc(STAGE_LABELS[currentStage(o)] || '')}</span></div>`).join('')
+        : '<div class="empty">No open orders</div>';
+    }
+
+    // Greeting
+    const g = $('#greeting');
+    if (g) {
+      const hr = new Date().getHours();
+      const hello = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+      const nm = (state.user && (state.user.name || state.user.username)) || '';
+      g.textContent = hello + (nm ? ', ' + nm.split(' ')[0] : '') + ' 👋';
+    }
   }
 
   // ── FMS SHEET ──
@@ -754,9 +834,9 @@
   }
 
   window.App = {
-    boot, doLogin, doLogout, refresh, setView,
+    boot, doLogin, doLogout, refresh, setView, toggleSidebar,
     openOrder, closeDetail, markDone, quickDone, saveCourier, saveOrderEdit,
-    renderKanban, renderFmsSheet, createManualOrder
+    renderKanban, renderFmsSheet
   };
   document.addEventListener('DOMContentLoaded', boot);
 })();
