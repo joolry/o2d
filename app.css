@@ -175,3 +175,30 @@ h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: v
 .fms-table tr.row-mine td.sticky-col { background: #faf6e8; }
 .fms-table tr.row-mine:hover td.sticky-col { background: var(--gold-soft); }
 .badge.gold { background: var(--gold-soft); color: #7a6210; }
+
+/* v2.6 — Board feel (AppSheet style) */
+.kanban-col.can-act .kanban-col-head {
+  border-bottom: 2px solid var(--gold);
+}
+.k-card.mine {
+  border-left: 3px solid var(--gold);
+  background: #fffdf6;
+}
+.k-card .btn-done {
+  margin-top: 8px;
+  width: 100%;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.kanban-col-head .count {
+  background: var(--ink);
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+.kanban-col.can-act .kanban-col-head .count {
+  background: var(--gold);
+  color: var(--ink);
+}
