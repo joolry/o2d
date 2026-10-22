@@ -166,17 +166,21 @@
   function applyNavAccess() {
     const show = {
       dashboard: true,
+      insights: true,
       mywork: hasAnyBox() && !isViewer(),
       kanban: true,
+      due: true,
       late: true,
-      fms: true
+      fms: true,
+      courier: true,
+      pipeline: true,
+      cities: true,
+      done: true
     };
     $$('.nav-btn').forEach(btn => {
       const v = btn.dataset.view;
       if (!v) return;
-      btn.style.display = show[v] !== false ? '' : 'none';
-      if (show[v] === false) btn.style.display = 'none';
-      else btn.style.display = '';
+      btn.style.display = (show[v] === false) ? 'none' : '';
     });
   }
 
@@ -244,18 +248,22 @@
     state.allowedBoxes = Object.keys(set).map(Number).filter(n => n >= 2 && n <= 5);
   }
 
+  function renderCurrentView() {
+    const v = state.view || 'dashboard';
+    if (v === 'dashboard') renderDashboard();
+    else if (v === 'insights') renderInsights();
+    else if (v === 'mywork') renderMyWork();
+    else if (v === 'kanban') renderKanban();
+    else if (v === 'due') renderDue();
+    else if (v === 'late') renderLate();
+    else if (v === 'fms') renderFmsSheet();
+    else if (v === 'courier') renderCourier();
+    else if (v === 'pipeline') renderPipeline();
+    else if (v === 'cities') renderCities();
+    else if (v === 'done') renderDone();
+  }
   function renderAll() {
-    renderDashboard();
-    renderFmsSheet();
-    if (hasAnyBox() && !isViewer()) renderMyWork();
-    renderKanban();
-    renderLate();
-    renderPipeline();
-    renderInsights();
-    renderDue();
-    renderCourier();
-    renderCities();
-    renderDone();
+    renderCurrentView();
   }
 
   function setView(v) {
