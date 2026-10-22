@@ -17,7 +17,7 @@
   <div id="login-screen" class="screen login-screen">
     <div class="login-card">
       <div class="logo-wrap">
-        <img id="brand-logo" src="https://script.google.com/macros/s/AKfycbzj2YUeTgk4hP58cd1GBGjzRSPE-xjhtBfnoxv2GpkaUzN-zB08WZsPqe8jTRiv9U9j/exec" alt="JOOLRY" onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='block'" />
+        <img id="brand-logo" src="https://joolry.in/cdn/shop/files/Joolry_Logo_160x.png?v=1661766461" alt="JOOLRY" onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='block'" />
         <div id="logo-fallback" class="logo-text" style="display:none">JOOLRY</div>
       </div>
       <p class="login-sub">Order Flow Monitoring</p>
@@ -30,6 +30,7 @@
 
   <!-- APP SHELL -->
   <div id="app-screen" class="screen app-screen" style="display:none">
+    <div id="global-loading" class="global-loading" style="display:none">Loading…</div>
     <header class="topbar">
       <div class="brand">
         <span class="brand-name">JOOLRY</span>
@@ -37,11 +38,14 @@
       </div>
       <nav class="nav-tabs">
         <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')">Dashboard</button>
+        <button class="nav-btn" data-view="mywork" onclick="App.setView('mywork')">My Work</button>
         <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')">Kanban</button>
         <button class="nav-btn" data-view="table" onclick="App.setView('table')">Orders</button>
+        <button class="nav-btn" data-view="analytics" onclick="App.setView('analytics')">Analytics</button>
+        <button class="nav-btn admin-only" data-view="admin" onclick="App.setView('admin')" style="display:none">Admin</button>
       </nav>
       <div class="top-actions">
-        <button class="btn ghost sm" onclick="App.forceSync()" title="Clear cache & refresh">↻ Sync</button>
+        <button id="btn-refresh" class="btn ghost sm" onclick="App.refresh()" title="Refresh">↻ Refresh</button>
         <div class="user-chip">
           <span id="user-name">—</span>
           <small id="user-role"></small>
@@ -62,22 +66,37 @@
           <h3>Delay overview</h3>
           <div id="chart-delay" class="bar-chart"></div>
         </div>
+        <div class="card">
+          <h3>Payment mode</h3>
+          <div id="chart-pay" class="bar-chart"></div>
+        </div>
+        <div class="card">
+          <h3>Top cities</h3>
+          <div id="chart-city" class="bar-chart"></div>
+        </div>
         <div class="card wide">
           <div class="card-head">
-            <h3>Needs attention</h3>
-            <button class="btn ghost sm" onclick="App.loadOrders()">Refresh</button>
+            <h3>Needs attention (late)</h3>
+            <button class="btn ghost sm" onclick="App.refresh()">Refresh</button>
           </div>
           <div id="attention-list" class="mini-list"></div>
         </div>
       </div>
     </section>
 
+    <!-- MY WORK -->
+    <section id="view-mywork" class="view" style="display:none">
+      <p class="view-hint">Orders where your next action is pending. Only boxes you are allowed to complete appear here.</p>
+      <div id="mywork-list" class="work-list"></div>
+    </section>
+
     <!-- KANBAN -->
     <section id="view-kanban" class="view" style="display:none">
       <div class="kanban-toolbar">
-        <input id="kanban-search" type="search" placeholder="Search order / client…" oninput="App.renderKanban()" />
+        <input id="kanban-search" type="search" placeholder="Search order / client / Shopify #…" oninput="App.renderKanban()" />
         <select id="kanban-filter" onchange="App.renderKanban()">
           <option value="open">Open only</option>
+          <option value="mine">My work</option>
           <option value="all">All orders</option>
         </select>
       </div>
@@ -90,10 +109,11 @@
         <input id="table-search" type="search" placeholder="Search…" oninput="App.renderTable()" />
         <select id="table-filter" onchange="App.renderTable()">
           <option value="open">Open</option>
-          <option value="all">All</option>
           <option value="late">Late only</option>
+          <option value="mine">My work</option>
+          <option value="all">All</option>
         </select>
-        <button class="btn ghost sm" onclick="App.loadOrders()">↻</button>
+        <button class="btn ghost sm" onclick="App.refresh()">↻</button>
       </div>
       <div class="table-wrap">
         <table class="data-table">
@@ -112,6 +132,40 @@
         </table>
       </div>
     </section>
+
+    <!-- ANALYTICS -->
+    <section id="view-analytics" class="view" style="display:none">
+      <div class="stats-row" id="analytics-stats"></div>
+      <div class="dash-grid">
+        <div class="card">
+          <h3>Pipeline count</h3>
+          <div id="an-pipeline" class="bar-chart"></div>
+        </div>
+        <div class="card">
+          <h3>Value by stage (₹)</h3>
+          <div id="an-value" class="bar-chart"></div>
+        </div>
+        <div class="card wide">
+          <h3>Boxes marked Done (lifetime in data)</h3>
+          <div id="an-done" class="bar-chart"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN -->
+    <section id="view-admin" class="view admin-only" style="display:none">
+      <p class="view-hint">Admin only. Users & roles are managed in the Google Sheet → Users tab. Allowed boxes come from Steps → Allowed Usernames.</p>
+      <div class="dash-grid">
+        <div class="card">
+          <h3>Session & permissions</h3>
+          <div id="admin-users" class="mini-list"></div>
+        </div>
+        <div class="card">
+          <h3>Open orders (quick)</h3>
+          <div id="admin-orders" class="mini-list"></div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <!-- DETAIL DRAWER -->
@@ -123,10 +177,32 @@
     </div>
     <div class="drawer-body">
       <div class="info-grid" id="d-info"></div>
+
+      <!-- Admin edit block -->
+      <div id="d-admin-edit" style="display:none">
+        <h3>Admin edit</h3>
+        <div class="form-grid">
+          <input id="e-client" placeholder="Client name" />
+          <input id="e-phone" placeholder="Phone" />
+          <input id="e-city" placeholder="City" />
+          <input id="e-value" placeholder="Order value" type="number" />
+          <input id="e-notes" placeholder="Notes" />
+          <select id="e-status">
+            <option value="">— Status —</option>
+            <option value="Open">Open</option>
+            <option value="Closed">Closed</option>
+            <option value="Done">Done</option>
+          </select>
+          <button class="btn primary" onclick="App.saveOrderEdit()">Save changes</button>
+        </div>
+      </div>
+
       <h3>Line items</h3>
       <div id="d-items" class="items-box"></div>
+
       <h3>Boxes</h3>
       <div id="d-boxes"></div>
+
       <h3>Courier</h3>
       <div class="form-grid">
         <input id="d-courier" placeholder="Courier" />
@@ -135,7 +211,7 @@
           <option value="No">Auto-Update: No</option>
           <option value="Yes">Auto-Update: Yes</option>
         </select>
-        <button class="btn primary" onclick="App.saveCourier()">Save courier</button>
+        <button id="btn-save-courier" class="btn primary" onclick="App.saveCourier()">Save courier</button>
       </div>
     </div>
   </aside>
