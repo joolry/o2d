@@ -3,91 +3,151 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <meta name="theme-color" content="#111111" />
+  <meta name="theme-color" content="#0a0a0a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Joolry Order FMS</title>
+  <title>JOOLRY Order FMS</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
-
   <!-- LOGIN -->
-  <div id="login-screen" class="screen">
+  <div id="login-screen" class="screen login-screen">
     <div class="login-card">
-      <h1>Joolry</h1>
-      <p class="sub">Order FMS</p>
+      <div class="logo-wrap">
+        <img id="brand-logo" src="https://script.google.com/macros/s/AKfycbzj2YUeTgk4hP58cd1GBGjzRSPE-xjhtBfnoxv2GpkaUzN-zB08WZsPqe8jTRiv9U9j/exec" alt="JOOLRY" onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='block'" />
+        <div id="logo-fallback" class="logo-text" style="display:none">JOOLRY</div>
+      </div>
+      <p class="login-sub">Order Flow Monitoring</p>
       <input id="login-user" type="text" placeholder="Username" autocomplete="username" />
       <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
-      <button id="login-btn" class="btn primary" onclick="App.doLogin()">Login</button>
+      <button id="login-btn" class="btn primary full" onclick="App.doLogin()">Sign in</button>
+      <p id="login-error" class="error-text"></p>
     </div>
   </div>
 
-  <!-- APP -->
-  <div id="app-screen" class="screen" style="display:none">
-    <header>
+  <!-- APP SHELL -->
+  <div id="app-screen" class="screen app-screen" style="display:none">
+    <header class="topbar">
       <div class="brand">
-        <strong>Joolry</strong> <span>Order FMS</span>
+        <span class="brand-name">JOOLRY</span>
+        <span class="brand-tag">Order FMS</span>
       </div>
-      <div class="user-info">
-        <span id="user-name"></span>
-        <small id="user-role"></small>
-        <button class="btn-link" onclick="App.doLogout()">Logout</button>
+      <nav class="nav-tabs">
+        <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')">Dashboard</button>
+        <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')">Kanban</button>
+        <button class="nav-btn" data-view="table" onclick="App.setView('table')">Orders</button>
+      </nav>
+      <div class="top-actions">
+        <button class="btn ghost sm" onclick="App.forceSync()" title="Clear cache & refresh">↻ Sync</button>
+        <div class="user-chip">
+          <span id="user-name">—</span>
+          <small id="user-role"></small>
+          <button class="btn-link" onclick="App.doLogout()">Logout</button>
+        </div>
       </div>
     </header>
 
-    <div class="filters">
-      <button class="filter-btn active" data-filter="open" onclick="App.setFilter('open')">Open</button>
-      <button class="filter-btn" data-filter="all" onclick="App.setFilter('all')">All</button>
-      <button class="btn-sm" onclick="App.loadOrders()">↻</button>
-    </div>
+    <!-- DASHBOARD -->
+    <section id="view-dashboard" class="view">
+      <div class="stats-row" id="stats-row"></div>
+      <div class="dash-grid">
+        <div class="card">
+          <h3>Orders by stage</h3>
+          <div id="chart-stages" class="bar-chart"></div>
+        </div>
+        <div class="card">
+          <h3>Delay overview</h3>
+          <div id="chart-delay" class="bar-chart"></div>
+        </div>
+        <div class="card wide">
+          <div class="card-head">
+            <h3>Needs attention</h3>
+            <button class="btn ghost sm" onclick="App.loadOrders()">Refresh</button>
+          </div>
+          <div id="attention-list" class="mini-list"></div>
+        </div>
+      </div>
+    </section>
 
-    <div id="orders-list" class="orders-list"></div>
+    <!-- KANBAN -->
+    <section id="view-kanban" class="view" style="display:none">
+      <div class="kanban-toolbar">
+        <input id="kanban-search" type="search" placeholder="Search order / client…" oninput="App.renderKanban()" />
+        <select id="kanban-filter" onchange="App.renderKanban()">
+          <option value="open">Open only</option>
+          <option value="all">All orders</option>
+        </select>
+      </div>
+      <div id="kanban-board" class="kanban-board"></div>
+    </section>
+
+    <!-- TABLE -->
+    <section id="view-table" class="view" style="display:none">
+      <div class="table-toolbar">
+        <input id="table-search" type="search" placeholder="Search…" oninput="App.renderTable()" />
+        <select id="table-filter" onchange="App.renderTable()">
+          <option value="open">Open</option>
+          <option value="all">All</option>
+          <option value="late">Late only</option>
+        </select>
+        <button class="btn ghost sm" onclick="App.loadOrders()">↻</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Client</th>
+              <th>Value</th>
+              <th>City</th>
+              <th>Stage</th>
+              <th>Status</th>
+              <th>Delay</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 
-  <!-- DETAIL PANEL (slide-up) -->
-  <div id="detail-panel" class="detail-panel">
-    <div class="detail-header">
-      <button class="btn-link" onclick="App.closeDetail()">← Back</button>
+  <!-- DETAIL DRAWER -->
+  <div id="detail-overlay" class="overlay" onclick="App.closeDetail()"></div>
+  <aside id="detail-panel" class="drawer">
+    <div class="drawer-head">
+      <button class="btn-link" onclick="App.closeDetail()">← Close</button>
       <h2 id="d-title">Order</h2>
     </div>
-    <div class="detail-body">
-      <div class="info-grid">
-        <div><label>Client</label><div id="d-client">—</div></div>
-        <div><label>Phone</label><div id="d-phone">—</div></div>
-        <div class="full"><label>Address</label><div id="d-address">—</div></div>
-        <div><label>Value</label><div id="d-value">—</div></div>
-        <div><label>Payment</label><div id="d-payment">—</div></div>
-        <div><label>Status</label><div id="d-status">—</div></div>
-        <div><label>Current</label><div id="d-current">—</div></div>
-      </div>
-
-      <h3>Items</h3>
+    <div class="drawer-body">
+      <div class="info-grid" id="d-info"></div>
+      <h3>Line items</h3>
       <div id="d-items" class="items-box"></div>
-
       <h3>Boxes</h3>
       <div id="d-boxes"></div>
-
       <h3>Courier</h3>
-      <div class="courier-form">
-        <input id="d-courier" placeholder="Courier name" />
-        <input id="d-awb" placeholder="AWB / Tracking No" />
+      <div class="form-grid">
+        <input id="d-courier" placeholder="Courier" />
+        <input id="d-awb" placeholder="AWB / Tracking" />
         <select id="d-auto">
           <option value="No">Auto-Update: No</option>
           <option value="Yes">Auto-Update: Yes</option>
         </select>
-        <button class="btn primary" onclick="App.saveCourier()">Save Courier</button>
+        <button class="btn primary" onclick="App.saveCourier()">Save courier</button>
       </div>
     </div>
-  </div>
+  </aside>
+
+  <div id="toast" class="toast"></div>
 
   <script src="appconfig.js"></script>
   <script src="core.js"></script>
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.register('sw.js').catch(function () {});
     }
   </script>
 </body>
