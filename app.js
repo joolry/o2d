@@ -1,4 +1,4 @@
-// JOOLRY Order FMS v2.3 — Email login + Role (Admin/Ops/Viewer) + Allowed Boxes + Manual Order + Activity
+// JOOLRY Order FMS v2.4 — FMS Sheet View + Role access + Email login + Manual + Activity
 (function () {
   'use strict';
   const C = window.Core;
@@ -8,7 +8,7 @@
 
   let state = {
     user: null, orders: [], steps: [], allowedBoxes: [],
-    view: 'dashboard', selected: null, loading: false
+    view: 'dashboard', selected: null, loading: false, _searchT: null
   };
 
   const BOX_COLS = [
@@ -16,7 +16,7 @@
     { key: 'box3', n: 3, label: 'Pack & Dispatch' },
     { key: 'box4', n: 4, label: 'Client Update' },
     { key: 'box5', n: 5, label: 'Shopify Fulfil' },
-    { key: 'done', n: 0, label: 'Done / Closed' }
+    { key: 'done', n: 0, label: 'Done' }
   ];
   const STAGE_LABELS = {
     box2: 'Availability', box3: 'Pack & Dispatch',
@@ -27,7 +27,6 @@
   function isAdmin() { return role() === 'admin'; }
   function isViewer() { return role() === 'viewer'; }
   function isOpsOrAdmin() { return isAdmin() || role() === 'ops'; }
-
   function canDoBox(n) {
     if (isAdmin()) return true;
     if (isViewer()) return false;
@@ -36,15 +35,12 @@
 
   function setLoading(on) {
     state.loading = on;
-    const el = $('#global-loading');
-    const btn = $('#btn-refresh');
+    const el = $('#global-loading'), btn = $('#btn-refresh');
     if (el) el.style.display = on ? 'block' : 'none';
-    if (btn) { btn.disabled = on; btn.textContent = on ? '…' : '↻ Refresh'; }
+    if (btn) { btn.disabled = on; btn.textContent = on ? '…' : '↻'; }
   }
-
   function toast(msg, type) {
-    const el = $('#toast');
-    if (!el) return;
+    const el = $('#toast'); if (!el) return;
     el.textContent = msg;
     el.className = 'toast show' + (type === 'error' ? ' error' : type === 'ok' ? ' ok' : '');
     clearTimeout(el._t);
@@ -57,23 +53,20 @@
     showApp();
     await refresh();
   }
-
   function showLogin() {
     $('#login-screen').style.display = 'flex';
     $('#app-screen').style.display = 'none';
   }
-
   function showApp() {
     $('#login-screen').style.display = 'none';
     $('#app-screen').style.display = 'block';
     if (state.user) {
       $('#user-name').textContent = state.user.name || state.user.username;
       $('#user-role').textContent = (state.user.role || '') +
-        (state.allowedBoxes && state.allowedBoxes.length ? ' · boxes ' + state.allowedBoxes.join(',') : '');
+        (state.allowedBoxes.length ? ' · ' + state.allowedBoxes.join(',') : '');
     }
     applyNavAccess();
   }
-
   function applyNavAccess() {
     $$('.nav-btn').forEach(btn => {
       const need = btn.dataset.need;
@@ -84,29 +77,23 @@
   }
 
   async function doLogin() {
-    const u = $('#login-user').value.trim();
-    const p = $('#login-pass').value;
-    const err = $('#login-error');
-    err.textContent = '';
+    const u = $('#login-user').value.trim(), p = $('#login-pass').value;
+    const err = $('#login-error'); err.textContent = '';
     if (!u || !p) { err.textContent = 'Enter email & password'; return; }
     const btn = $('#login-btn');
     btn.disabled = true; btn.textContent = 'Signing in…';
     const res = await rpc('login', [u, p]);
     btn.disabled = false; btn.textContent = 'Sign in';
-    if (!res || !res.success) {
-      err.textContent = (res && res.error) || 'Login failed';
-      return;
-    }
+    if (!res || !res.success) { err.textContent = (res && res.error) || 'Login failed'; return; }
     setSession(res.token, res.user);
     state.user = res.user;
     state.allowedBoxes = res.user.allowedBoxes || [];
     showApp();
     await refresh();
   }
-
   function doLogout() {
     clearSession();
-    state = { user: null, orders: [], steps: [], allowedBoxes: [], view: 'dashboard', selected: null, loading: false };
+    state = { user: null, orders: [], steps: [], allowedBoxes: [], view: 'dashboard', selected: null, loading: false, _searchT: null };
     showLogin();
   }
 
@@ -119,7 +106,6 @@
       ]);
       if (ordRes && ordRes.success) state.orders = ordRes.orders || [];
       else toast((ordRes && ordRes.error) || 'Load failed', 'error');
-
       if (bootRes && bootRes.success) {
         state.steps = bootRes.steps || [];
         if (bootRes.user) {
@@ -135,9 +121,7 @@
       applyNavAccess();
       renderAll();
       if (state.view === 'activity' && isAdmin()) loadActivity();
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
 
   function computeAllowed() {
@@ -146,7 +130,6 @@
       state.allowedBoxes = state.user.allowedBoxes.map(Number).filter(n => n >= 2 && n <= 5);
       return;
     }
-    // fallback from steps
     const uname = String(state.user && state.user.username || '').toLowerCase();
     const set = {};
     (state.steps || []).forEach(s => {
@@ -159,26 +142,25 @@
 
   function renderAll() {
     renderDashboard();
+    renderFmsSheet();
     if (isOpsOrAdmin()) renderMyWork();
     renderKanban();
-    renderTable();
-    if (isOpsOrAdmin()) renderAnalytics();
+    renderLate();
     if (isAdmin()) renderAdmin();
   }
 
   function setView(v) {
-    // gate
-    if (v === 'admin' || v === 'activity') { if (!isAdmin()) { toast('Admin only', 'error'); return; } }
-    if (v === 'mywork' || v === 'analytics' || v === 'manual') {
-      if (!isOpsOrAdmin()) { toast('No access', 'error'); return; }
-    }
+    if ((v === 'admin' || v === 'activity') && !isAdmin()) { toast('Admin only', 'error'); return; }
+    if ((v === 'mywork' || v === 'manual') && !isOpsOrAdmin()) { toast('No access', 'error'); return; }
     state.view = v;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-    ['dashboard', 'mywork', 'kanban', 'table', 'analytics', 'manual', 'activity', 'admin'].forEach(id => {
+    ['dashboard','fms','mywork','kanban','late','manual','activity','admin'].forEach(id => {
       const el = $('#view-' + id);
       if (el) el.style.display = id === v ? 'block' : 'none';
     });
     if (v === 'activity') loadActivity();
+    if (v === 'fms') renderFmsSheet();
+    if (v === 'late') renderLate();
   }
 
   function isOpen(o) {
@@ -215,17 +197,49 @@
     const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
     return n && canDoBox(n);
   }
+  function shortDate(s) {
+    if (!s) return '—';
+    const t = String(s).replace('T', ' ');
+    return t.length > 16 ? t.slice(5, 16) : t.slice(0, 16);
+  }
+  function boxCell(b, isAct) {
+    if (!b) return { txt: '—', cls: '' };
+    const val = isAct ? b.actual : b.planned;
+    const done = String(b.status || '').toLowerCase() === 'done';
+    const delay = b.delay !== '' && b.delay != null ? parseFloat(b.delay) : null;
+    let cls = '';
+    if (isAct) {
+      if (done) cls = delay > 0 ? 'cell-late' : 'cell-ok';
+      else if (delay > 0) cls = 'cell-late';
+      else cls = 'cell-pending';
+    }
+    return { txt: shortDate(val), cls: cls };
+  }
 
   function barHtml(rows) {
     const max = Math.max(1, ...rows.map(r => r.v));
     return rows.map(r => `
-      <div class="bar-row">
-        <span>${esc(r.l)}</span>
-        <div class="bar-track"><div class="bar-fill ${r.c || ''}" style="width:${(r.v / max) * 100}%"></div></div>
-        <span>${r.v}${r.sfx || ''}</span>
-      </div>`).join('');
+      <div class="bar-row"><span>${esc(r.l)}</span>
+      <div class="bar-track"><div class="bar-fill ${r.c || ''}" style="width:${(r.v/max)*100}%"></div></div>
+      <span>${r.v}</span></div>`).join('');
   }
 
+  function filteredList(filterSel, searchSel) {
+    const q = ((searchSel && $(searchSel) && $(searchSel).value) || '').toLowerCase();
+    const filter = (filterSel && $(filterSel) && $(filterSel).value) || 'open';
+    let list = state.orders.slice();
+    if (filter === 'open') list = list.filter(isOpen);
+    if (filter === 'late') list = list.filter(o => isOpen(o) && worstDelay(o) > 0);
+    if (filter === 'mine') list = list.filter(orderNeedsMyBox);
+    if (q) list = list.filter(o =>
+      String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
+      String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
+      String(o.city || '').toLowerCase().indexOf(q) >= 0 ||
+      String(o.shopifyNo || '').toLowerCase().indexOf(q) >= 0);
+    return list;
+  }
+
+  // ── DASHBOARD ──
   function renderDashboard() {
     const open = state.orders.filter(isOpen);
     const late = open.filter(o => worstDelay(o) > 0);
@@ -240,7 +254,7 @@
     state.orders.forEach(o => { counts[currentStage(o)]++; });
     $('#chart-stages').innerHTML = barHtml([
       { l: 'Availability', v: counts.box2 }, { l: 'Pack/Dispatch', v: counts.box3, c: 'gold' },
-      { l: 'Client update', v: counts.box4, c: 'rose' }, { l: 'Shopify', v: counts.box5, c: 'ok' },
+      { l: 'Client', v: counts.box4, c: 'rose' }, { l: 'Shopify', v: counts.box5, c: 'ok' },
       { l: 'Done', v: counts.done, c: 'ok' }
     ]);
     let ontime = 0, mild = 0, high = 0;
@@ -249,16 +263,9 @@
       if (d <= 0) ontime++; else if (d < 9) mild++; else high++;
     });
     $('#chart-delay').innerHTML = barHtml([
-      { l: 'On time', v: ontime, c: 'ok' }, { l: '< 1 day late', v: mild, c: 'gold' },
-      { l: '≥ 1 day late', v: high, c: 'late' }
+      { l: 'On time', v: ontime, c: 'ok' }, { l: '< 1d late', v: mild, c: 'gold' },
+      { l: '≥ 1d late', v: high, c: 'late' }
     ]);
-    const pay = {};
-    open.forEach(o => { const k = String(o.paymentMode || 'Unknown'); pay[k] = (pay[k] || 0) + 1; });
-    $('#chart-pay').innerHTML = barHtml(Object.keys(pay).map(k => ({ l: k, v: pay[k], c: 'gold' })));
-    const city = {};
-    open.forEach(o => { const k = String(o.city || '—').trim() || '—'; city[k] = (city[k] || 0) + 1; });
-    const topCity = Object.keys(city).map(k => ({ l: k, v: city[k] })).sort((a, b) => b.v - a.v).slice(0, 6);
-    $('#chart-city').innerHTML = barHtml(topCity.map((x, i) => ({ ...x, c: i === 0 ? 'gold' : '' })));
     const attn = open.filter(o => worstDelay(o) > 0).sort((a, b) => worstDelay(b) - worstDelay(a)).slice(0, 10);
     $('#attention-list').innerHTML = attn.length
       ? attn.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
@@ -267,13 +274,41 @@
       : '<div class="empty">No delayed orders 🎉</div>';
   }
 
-  function renderMyWork() {
-    const list = state.orders.filter(orderNeedsMyBox);
+  // ── FMS SHEET (classic) ──
+  function renderFmsSheet() {
+    const list = filteredList('#fms-filter', '#fms-search');
+    const body = $('#fms-body');
+    if (!body) return;
     if (!list.length) {
-      $('#mywork-list').innerHTML = '<div class="empty">No tasks assigned to you right now</div>';
+      body.innerHTML = '<tr><td colspan="13" class="empty">No orders</td></tr>';
       return;
     }
-    $('#mywork-list').innerHTML = list.map(o => {
+    body.innerHTML = list.map(o => {
+      const b2p = boxCell(o.box2, false), b2a = boxCell(o.box2, true);
+      const b3p = boxCell(o.box3, false), b3a = boxCell(o.box3, true);
+      const b4p = boxCell(o.box4, false), b4a = boxCell(o.box4, true);
+      const b5p = boxCell(o.box5, false), b5a = boxCell(o.box5, true);
+      const d = worstDelay(o);
+      return `<tr class="${d > 0 ? 'row-late' : ''}" onclick="App.openOrder('${esc(o.orderId)}')">
+        <td class="sticky-col"><strong>${esc(o.orderId)}</strong><br><small class="muted">${esc(o.shopifyNo || '')}</small></td>
+        <td>${esc(o.clientName || '—')}</td>
+        <td>${money(o.orderValue)}</td>
+        <td>${esc(o.city || '—')}</td>
+        <td class="${b2p.cls}">${b2p.txt}</td><td class="${b2a.cls}">${b2a.txt}</td>
+        <td class="${b3p.cls}">${b3p.txt}</td><td class="${b3a.cls}">${b3a.txt}</td>
+        <td class="${b4p.cls}">${b4p.txt}</td><td class="${b4a.cls}">${b4a.txt}</td>
+        <td class="${b5p.cls}">${b5p.txt}</td><td class="${b5a.cls}">${b5a.txt}</td>
+        <td>${esc(o.overallStatus || '—')}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── MY WORK ──
+  function renderMyWork() {
+    const list = state.orders.filter(orderNeedsMyBox);
+    const el = $('#mywork-list'); if (!el) return;
+    if (!list.length) { el.innerHTML = '<div class="empty">No tasks for you right now</div>'; return; }
+    el.innerHTML = list.map(o => {
       const st = currentStage(o);
       const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
       const d = worstDelay(o);
@@ -288,16 +323,9 @@
     }).join('');
   }
 
+  // ── KANBAN ──
   function renderKanban() {
-    const q = (($('#kanban-search') && $('#kanban-search').value) || '').toLowerCase();
-    const filter = ($('#kanban-filter') && $('#kanban-filter').value) || 'open';
-    let list = state.orders.slice();
-    if (filter === 'open') list = list.filter(isOpen);
-    if (filter === 'mine') list = list.filter(orderNeedsMyBox);
-    if (q) list = list.filter(o =>
-      String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
-      String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
-      String(o.shopifyNo || '').toLowerCase().indexOf(q) >= 0);
+    const list = filteredList('#kanban-filter', '#kanban-search');
     const buckets = { box2: [], box3: [], box4: [], box5: [], done: [] };
     list.forEach(o => { (buckets[currentStage(o)] || buckets.done).push(o); });
     $('#kanban-board').innerHTML = BOX_COLS.map(col => {
@@ -317,81 +345,36 @@
     }).join('');
   }
 
-  function renderTable() {
-    const q = (($('#table-search') && $('#table-search').value) || '').toLowerCase();
-    const filter = ($('#table-filter') && $('#table-filter').value) || 'open';
-    let list = state.orders.slice();
-    if (filter === 'open') list = list.filter(isOpen);
-    if (filter === 'late') list = list.filter(o => isOpen(o) && worstDelay(o) > 0);
-    if (filter === 'mine') list = list.filter(orderNeedsMyBox);
-    if (q) list = list.filter(o =>
-      String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
-      String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
-      String(o.shopifyNo || '').toLowerCase().indexOf(q) >= 0);
-    $('#table-body').innerHTML = list.map(o => {
+  // ── LATE ──
+  function renderLate() {
+    const list = state.orders.filter(o => isOpen(o) && worstDelay(o) > 0)
+      .sort((a, b) => worstDelay(b) - worstDelay(a));
+    const el = $('#late-list'); if (!el) return;
+    if (!list.length) { el.innerHTML = '<div class="empty">No late orders 🎉</div>'; return; }
+    el.innerHTML = list.map(o => {
+      const st = currentStage(o);
       const d = worstDelay(o);
-      const st = currentStage(o);
-      return `<tr onclick="App.openOrder('${esc(o.orderId)}')">
-        <td><strong>${esc(o.orderId)}</strong><br><small class="muted">${esc(o.shopifyNo || '')}</small></td>
-        <td>${esc(o.clientName || '—')}</td>
-        <td>${money(o.orderValue)}</td>
-        <td>${esc(o.city || '—')}</td>
-        <td>${STAGE_LABELS[st] || st}</td>
-        <td>${esc(o.overallStatus || '—')}</td>
-        <td>${d > 0 ? '<span class="badge late">+' + d.toFixed(1) + 'h</span>' : '<span class="badge ok">OK</span>'}</td>
-      </tr>`;
-    }).join('') || '<tr><td colspan="7" class="empty">No orders</td></tr>';
-  }
-
-  function renderAnalytics() {
-    const open = state.orders.filter(isOpen);
-    const closed = state.orders.filter(o => !isOpen(o));
-    const totalVal = state.orders.reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
-    $('#analytics-stats').innerHTML = `
-      <div class="stat-card"><div class="label">Total orders</div><div class="value">${state.orders.length}</div></div>
-      <div class="stat-card"><div class="label">Open</div><div class="value">${open.length}</div></div>
-      <div class="stat-card ok"><div class="label">Closed</div><div class="value">${closed.length}</div></div>
-      <div class="stat-card gold"><div class="label">Total value</div><div class="value" style="font-size:20px">${money(totalVal)}</div></div>`;
-    const counts = { box2: 0, box3: 0, box4: 0, box5: 0, done: 0 };
-    const vals = { box2: 0, box3: 0, box4: 0, box5: 0, done: 0 };
-    state.orders.forEach(o => {
-      const st = currentStage(o);
-      counts[st]++; vals[st] += parseFloat(o.orderValue) || 0;
-    });
-    $('#an-pipeline').innerHTML = barHtml([
-      { l: 'Availability', v: counts.box2 }, { l: 'Pack', v: counts.box3, c: 'gold' },
-      { l: 'Client', v: counts.box4, c: 'rose' }, { l: 'Shopify', v: counts.box5, c: 'ok' },
-      { l: 'Done', v: counts.done, c: 'ok' }
-    ]);
-    $('#an-value').innerHTML = barHtml([
-      { l: 'Avail', v: Math.round(vals.box2) }, { l: 'Pack', v: Math.round(vals.box3), c: 'gold' },
-      { l: 'Client', v: Math.round(vals.box4), c: 'rose' }, { l: 'Shopify', v: Math.round(vals.box5), c: 'ok' },
-      { l: 'Done', v: Math.round(vals.done), c: 'ok' }
-    ]);
-    let b2 = 0, b3 = 0, b4 = 0, b5 = 0;
-    state.orders.forEach(o => {
-      if (o.box2 && String(o.box2.status).toLowerCase() === 'done') b2++;
-      if (o.box3 && String(o.box3.status).toLowerCase() === 'done') b3++;
-      if (o.box4 && String(o.box4.status).toLowerCase() === 'done') b4++;
-      if (o.box5 && String(o.box5.status).toLowerCase() === 'done') b5++;
-    });
-    $('#an-done').innerHTML = barHtml([
-      { l: 'Box 2 done', v: b2 }, { l: 'Box 3 done', v: b3, c: 'gold' },
-      { l: 'Box 4 done', v: b4, c: 'rose' }, { l: 'Box 5 done', v: b5, c: 'ok' }
-    ]);
+      return `<div class="work-card late">
+        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
+          <div class="k-id">${esc(o.orderId)} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
+          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)} · ${esc(o.city || '')}</div>
+          <div class="k-meta">${STAGE_LABELS[st] || st} · <span class="badge late">+${d.toFixed(1)}h</span></div>
+        </div>
+      </div>`;
+    }).join('');
   }
 
   function renderAdmin() {
     $('#admin-users').innerHTML = `
       <div class="mini-item"><span>Logged in as <strong>${esc(state.user.username)}</strong> (${esc(state.user.role)})</span></div>
-      <div class="mini-item"><span>Allowed boxes: <strong>${isAdmin() ? 'all (2–5)' : state.allowedBoxes.join(', ') || 'none'}</strong></span></div>
-      <div class="view-hint" style="margin-top:10px">Users sheet: Username = Email · Role = Admin / Ops / Viewer · Col H = Allowed Boxes (e.g. 2,3)</div>`;
+      <div class="mini-item"><span>Allowed boxes: <strong>${isAdmin() ? 'all 2–5' : state.allowedBoxes.join(', ') || 'none'}</strong></span></div>
+      <div class="view-hint" style="margin-top:8px">Users sheet: Email = Username · Role = Admin/Ops/Viewer · Col H = Allowed Boxes</div>`;
     const open = state.orders.filter(isOpen);
-    $('#admin-orders').innerHTML = open.slice(0, 30).map(o => `
+    $('#admin-orders').innerHTML = open.slice(0, 25).map(o => `
       <div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
-        <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')} · ${money(o.orderValue)}</span>
+        <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
         <span class="badge">${esc(o.overallStatus || 'Open')}</span>
-      </div>`).join('') || '<div class="empty">No open orders</div>';
+      </div>`).join('') || '<div class="empty">No open</div>';
   }
 
   async function loadActivity() {
@@ -403,11 +386,9 @@
     }
     const rows = res.rows || [];
     $('#activity-body').innerHTML = rows.length
-      ? rows.map(r => `<tr>
-          <td>${esc(r.timestamp)}</td><td>${esc(r.username)}</td><td>${esc(r.action)}</td>
-          <td>${esc(r.orderId)}</td><td>${esc(r.box)}</td><td>${esc(r.details)}</td>
-        </tr>`).join('')
-      : '<tr><td colspan="6" class="empty">No activity yet</td></tr>';
+      ? rows.map(r => `<tr><td>${esc(r.timestamp)}</td><td>${esc(r.username)}</td><td>${esc(r.action)}</td>
+          <td>${esc(r.orderId)}</td><td>${esc(r.box)}</td><td>${esc(r.details)}</td></tr>`).join('')
+      : '<tr><td colspan="6" class="empty">No activity</td></tr>';
   }
 
   async function createManualOrder() {
@@ -415,30 +396,19 @@
     const client = ($('#m-client').value || '').trim();
     if (!client) { toast('Client name required', 'error'); return; }
     const payload = {
-      clientName: client,
-      phone: ($('#m-phone').value || '').trim(),
-      email: ($('#m-email').value || '').trim(),
-      city: ($('#m-city').value || '').trim(),
-      pincode: ($('#m-pincode').value || '').trim(),
-      address: ($('#m-address').value || '').trim(),
-      orderValue: $('#m-value').value || 0,
-      paymentMode: $('#m-pay').value || 'Prepaid',
-      notes: ($('#m-notes').value || '').trim(),
-      items: []
+      clientName: client, phone: ($('#m-phone').value || '').trim(),
+      email: ($('#m-email').value || '').trim(), city: ($('#m-city').value || '').trim(),
+      pincode: ($('#m-pincode').value || '').trim(), address: ($('#m-address').value || '').trim(),
+      orderValue: $('#m-value').value || 0, paymentMode: $('#m-pay').value || 'Prepaid',
+      notes: ($('#m-notes').value || '').trim(), items: []
     };
     const prod = ($('#m-product').value || '').trim();
-    if (prod) {
-      payload.items.push({
-        product: prod,
-        qty: Number($('#m-qty').value) || 1,
-        value: Number(payload.orderValue) || 0
-      });
-    }
+    if (prod) payload.items.push({ product: prod, qty: Number($('#m-qty').value) || 1, value: Number(payload.orderValue) || 0 });
     setLoading(true);
     try {
       const res = await rpc('createManualOrder', [payload]);
       if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
-      toast('Order created: ' + res.orderId, 'ok');
+      toast('Created: ' + res.orderId, 'ok');
       ['m-client','m-phone','m-email','m-city','m-pincode','m-address','m-value','m-notes','m-product'].forEach(id => {
         const el = $('#' + id); if (el) el.value = '';
       });
@@ -458,7 +428,6 @@
       $('#detail-panel').classList.add('open');
     } finally { setLoading(false); }
   }
-
   function closeDetail() {
     $('#detail-overlay').classList.remove('open');
     $('#detail-panel').classList.remove('open');
@@ -476,23 +445,17 @@
       <div><label>Status</label><div>${esc(o.overallStatus || '—')}</div></div>
       <div><label>Current</label><div>${esc(o.currentBox || '—')}</div></div>
       <div><label>Entry</label><div>${fmtDate(o.entryTime)}</div></div>`;
-
     const adminEdit = $('#d-admin-edit');
     if (isAdmin()) {
       adminEdit.style.display = 'block';
-      $('#e-client').value = o.clientName || '';
-      $('#e-phone').value = o.phone || '';
-      $('#e-city').value = o.city || '';
-      $('#e-value').value = o.orderValue || '';
-      $('#e-notes').value = o.notes || '';
-      $('#e-status').value = o.overallStatus || '';
+      $('#e-client').value = o.clientName || ''; $('#e-phone').value = o.phone || '';
+      $('#e-city').value = o.city || ''; $('#e-value').value = o.orderValue || '';
+      $('#e-notes').value = o.notes || ''; $('#e-status').value = o.overallStatus || '';
     } else adminEdit.style.display = 'none';
-
     const items = o.items || [];
     $('#d-items').innerHTML = items.length
       ? items.map(it => `<div class="item-row"><span>${esc(it.product)}</span><span>×${it.qty}</span><span>${money(it.value)}</span></div>`).join('')
       : '<div class="empty">No items</div>';
-
     const boxes = [
       { n: 2, label: 'Product Availability Check', data: o.box2 },
       { n: 3, label: 'Order Packing & Dispatch', data: o.box3 },
@@ -504,9 +467,8 @@
       const isDone = String(d.status || '').toLowerCase() === 'done';
       const delay = d.delay !== '' && d.delay != null ? parseFloat(d.delay) : null;
       let delayTxt = '';
-      if (delay != null && !isNaN(delay)) {
+      if (delay != null && !isNaN(delay))
         delayTxt = delay > 0 ? `+${delay.toFixed(1)}h late` : (delay < 0 ? `${Math.abs(delay).toFixed(1)}h left` : 'on time');
-      }
       const can = canDoBox(b.n);
       return `<div class="box-row ${isDone ? 'done' : ''} ${delay > 0 ? 'late' : ''}">
         <div class="box-head"><span>Box ${b.n} — ${b.label}</span>
@@ -518,24 +480,19 @@
           <span class="${delay > 0 ? 'late' : ''}">${delayTxt}</span>
         </div>
         ${!isDone && can ? `<button class="btn-done" onclick="App.markDone(${b.n})">Mark Done</button>` : ''}
-        ${!isDone && !can ? `<div class="muted" style="font-size:11px;margin-top:6px">No access to complete this box</div>` : ''}
+        ${!isDone && !can ? `<div class="muted" style="font-size:11px;margin-top:6px">No access</div>` : ''}
       </div>`;
     }).join('');
-
     const canCourier = isOpsOrAdmin();
-    $('#d-courier').value = o.courier || '';
-    $('#d-awb').value = o.awb || '';
+    $('#d-courier').value = o.courier || ''; $('#d-awb').value = o.awb || '';
     $('#d-auto').value = String(o.courierAutoUpdate || '').toLowerCase() === 'yes' ? 'Yes' : 'No';
-    $('#d-courier').disabled = !canCourier;
-    $('#d-awb').disabled = !canCourier;
-    $('#d-auto').disabled = !canCourier;
+    $('#d-courier').disabled = !canCourier; $('#d-awb').disabled = !canCourier; $('#d-auto').disabled = !canCourier;
     $('#btn-save-courier').style.display = canCourier ? '' : 'none';
   }
 
   async function markDone(boxNo) {
-    if (!state.selected) return;
-    if (!canDoBox(boxNo)) { toast('No access for Box ' + boxNo, 'error'); return; }
-    if (!confirm('Mark Box ' + boxNo + ' as Done?')) return;
+    if (!state.selected || !canDoBox(boxNo)) { toast('No access', 'error'); return; }
+    if (!confirm('Mark Box ' + boxNo + ' Done?')) return;
     setLoading(true);
     try {
       const res = await rpc('markBoxDone', [state.selected.orderId, boxNo, '']);
@@ -545,7 +502,6 @@
       await refresh();
     } finally { setLoading(false); }
   }
-
   async function quickDone(orderId, boxNo) {
     if (!canDoBox(boxNo)) { toast('No access', 'error'); return; }
     if (!confirm('Mark Box ' + boxNo + ' Done for ' + orderId + '?')) return;
@@ -557,16 +513,13 @@
       await refresh();
     } finally { setLoading(false); }
   }
-
   async function saveCourier() {
     if (!state.selected || isViewer()) return;
     setLoading(true);
     try {
       const res = await rpc('updateCourier', [
-        state.selected.orderId,
-        $('#d-courier').value.trim(),
-        $('#d-awb').value.trim(),
-        $('#d-auto').value
+        state.selected.orderId, $('#d-courier').value.trim(),
+        $('#d-awb').value.trim(), $('#d-auto').value
       ]);
       if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
       toast('Courier saved', 'ok');
@@ -574,24 +527,17 @@
       await refresh();
     } finally { setLoading(false); }
   }
-
   async function saveOrderEdit() {
     if (!state.selected || !isAdmin()) return;
     setLoading(true);
     try {
-      const res = await rpc('updateOrder', [
-        state.selected.orderId,
-        {
-          clientName: $('#e-client').value.trim(),
-          phone: $('#e-phone').value.trim(),
-          city: $('#e-city').value.trim(),
-          orderValue: $('#e-value').value,
-          notes: $('#e-notes').value.trim(),
-          overallStatus: $('#e-status').value
-        }
-      ]);
+      const res = await rpc('updateOrder', [state.selected.orderId, {
+        clientName: $('#e-client').value.trim(), phone: $('#e-phone').value.trim(),
+        city: $('#e-city').value.trim(), orderValue: $('#e-value').value,
+        notes: $('#e-notes').value.trim(), overallStatus: $('#e-status').value
+      }]);
       if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
-      toast('Order updated', 'ok');
+      toast('Updated', 'ok');
       await openOrder(state.selected.orderId);
       await refresh();
     } finally { setLoading(false); }
@@ -605,8 +551,7 @@
   window.App = {
     boot, doLogin, doLogout, refresh, setView,
     openOrder, closeDetail, markDone, quickDone, saveCourier, saveOrderEdit,
-    renderKanban, renderTable, createManualOrder
+    renderKanban, renderFmsSheet, createManualOrder
   };
-
   document.addEventListener('DOMContentLoaded', boot);
 })();
