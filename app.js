@@ -1,4 +1,4 @@
-// JOOLRY Order FMS v2.5 — Strict access: only what you need, only what you can do
+// JOOLRY Order FMS v2.6 — Strict board: only allowed columns + actions
 (function () {
   'use strict';
   const C = window.Core;
@@ -70,9 +70,9 @@
       $('#user-role').textContent = (state.user.role || '') + ' · ' + boxes;
     }
     applyNavAccess();
-    // default view: My Work if has boxes, else Dashboard
+    // Ops with boxes → land on Kanban board (main working view)
     if (hasAnyBox() && !isAdmin() && !isViewer()) {
-      setView('mywork');
+      setView('kanban');
     }
   }
 
@@ -80,7 +80,7 @@
   function applyNavAccess() {
     const show = {
       dashboard: true,
-      fms: true,                          // everyone can see sheet (read)
+      fms: isAdmin() || isViewer(),       // Ops: hide full FMS sheet (use Kanban instead)
       mywork: hasAnyBox() && !isViewer(), // only if they have boxes
       kanban: true,
       late: true,
@@ -182,6 +182,15 @@
     if (v === 'fms') renderFmsSheet();
     if (v === 'late') renderLate();
     if (v === 'mywork') renderMyWork();
+    if (v === 'kanban') {
+      // Ops default filter = mine
+      const filterEl = $('#kanban-filter');
+      if (filterEl && hasAnyBox() && !isAdmin() && !filterEl._touched) {
+        filterEl.value = 'mine';
+        filterEl._touched = true;
+      }
+      renderKanban();
+    }
   }
 
   function isOpen(o) {
@@ -378,20 +387,48 @@
     const list = filteredList('#kanban-filter', '#kanban-search');
     const buckets = { box2: [], box3: [], box4: [], box5: [], done: [] };
     list.forEach(o => { (buckets[currentStage(o)] || buckets.done).push(o); });
-    $('#kanban-board').innerHTML = BOX_COLS.map(col => {
+
+    // Strict column visibility:
+    // - Admin / Viewer → all columns
+    // - Ops → only their allowed boxes + Done
+    let cols = BOX_COLS;
+    if (!isAdmin() && !isViewer()) {
+      cols = BOX_COLS.filter(c => c.key === 'done' || canDoBox(c.n));
+    }
+
+    const board = $('#kanban-board');
+    if (!board) return;
+
+    board.innerHTML = cols.map(col => {
       const cards = buckets[col.key] || [];
-      return `<div class="kanban-col">
-        <div class="kanban-col-head"><span>${col.label}</span><span class="count">${cards.length}</span></div>
+      const canAct = col.key !== 'done' && canDoBox(col.n);
+
+      return `<div class="kanban-col ${canAct ? 'can-act' : ''}">
+        <div class="kanban-col-head">
+          <span>${col.label}</span>
+          <span class="count">${cards.length}</span>
+        </div>
         <div class="kanban-col-body">
-          ${cards.map(o => {
+          ${cards.length ? cards.map(o => {
             const d = worstDelay(o);
-            return `<div class="k-card ${d > 0 ? 'late' : ''}" onclick="App.openOrder('${esc(o.orderId)}')">
-              <div class="k-id">${esc(o.orderId)}</div>
+            const isMine = orderNeedsMyBox(o);
+            return `<div class="k-card ${d > 0 ? 'late' : ''} ${isMine ? 'mine' : ''}" onclick="App.openOrder('${esc(o.orderId)}')">
+              <div class="k-id">
+                ${esc(o.orderId)}
+                ${isMine ? '<span class="badge gold">Yours</span>' : ''}
+              </div>
               <div class="k-client">${esc(o.clientName || '—')}</div>
-              <div class="k-meta"><span>${money(o.orderValue)}</span><span>${d > 0 ? '+' + d.toFixed(1) + 'h' : esc(o.city || '')}</span></div>
+              <div class="k-meta">
+                <span>${money(o.orderValue)}</span>
+                <span>${d > 0 ? '<span class="badge late">+' + d.toFixed(1) + 'h</span>' : esc(o.city || '')}</span>
+              </div>
+              ${canAct && isMine ?
+                `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${col.n})">Mark Done</button>`
+                : ''}
             </div>`;
-          }).join('') || '<div class="empty" style="padding:16px 8px">Empty</div>'}
-        </div></div>`;
+          }).join('') : '<div class="empty" style="padding:16px 8px">Empty</div>'}
+        </div>
+      </div>`;
     }).join('');
   }
 
