@@ -1,4 +1,4 @@
-// api/_lib.js — Order FMS: READ = Firestore snapshot | WRITE = GAS then rebuild
+// api/_lib.js — Order FMS v2.3: READ = Firestore snapshot | WRITE = GAS then rebuild
 const crypto = require('crypto');
 const cache = require('./_cache');
 const store = require('./_store');
@@ -11,7 +11,8 @@ const ALLOWED = new Set([
   'getBootData', 'getOrders', 'getOrderDetail',
   'getSteps', 'getConfig', 'getSnapshot',
   'markBoxDone', 'updateCourier', 'updateOrder',
-  'syncFromShopify', 'clientForceSync'
+  'syncFromShopify', 'clientForceSync',
+  'getActivityLog', 'createManualOrder'
 ]);
 
 const SNAPSHOT_READS = new Set([
@@ -176,15 +177,14 @@ async function handle(fn, args, token, meta) {
     return { success: false, error: 'Unknown function' };
   }
 
-  // login is special — no token required
   if (fn === 'login') {
     const out = await callGas('login', args, true);
     if (out && out.success && out.user) {
-      // re-sign with our SESSION_SECRET so Vercel owns the session
       const payload = {
         username: out.user.username,
         name: out.user.name,
         role: out.user.role,
+        allowedBoxes: out.user.allowedBoxes || [],
         exp: Date.now() + 12 * 3600 * 1000
       };
       out.token = sign(payload);
@@ -197,7 +197,6 @@ async function handle(fn, args, token, meta) {
     return { success: false, error: 'Session expired. Please login again.' };
   }
 
-  // Snapshot path for hot reads
   if (process.env.SNAPSHOT === 'on' && SNAPSHOT_READS.has(fn)) {
     try {
       const m = await store.getMeta();
@@ -215,8 +214,6 @@ async function handle(fn, args, token, meta) {
     }
   }
 
-  // Live GAS (or cache wrap)
-  // Writes: prepend Vercel-verified user so GAS doesn't need its own token format
   if (user && !isRead(fn)) {
     args = [user.username, user.role || 'Ops', user.name || user.username].concat(args);
   }
@@ -232,7 +229,6 @@ async function handle(fn, args, token, meta) {
   }
   meta.gasMs = Date.now() - t0;
 
-  // After successful write → rebuild snapshot in background
   if (!isRead(fn) && out && out.success !== false) {
     waitUntil(rebuildAfterWrite());
   }
