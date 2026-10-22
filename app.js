@@ -1,4 +1,4 @@
-// JOOLRY Order FMS v2.8 — Premium UI + collapse + pipeline
+// JOOLRY Order FMS v2.9 — Themes + multi-view + responsive
 (function () {
   'use strict';
   const C = window.Core;
@@ -12,8 +12,10 @@
   };
   let pollTimer = null;
   const VIEW_TITLES = {
-    dashboard: 'Dashboard', mywork: 'Pending Works', kanban: 'By Stages',
-    fms: 'All Orders', late: 'Late Orders', pipeline: 'Value Pipeline'
+    dashboard: 'Dashboard', insights: 'Insights', mywork: 'Pending Works',
+    kanban: 'By Stages', due: 'Due Today', late: 'Late Orders',
+    fms: 'All Orders', courier: 'Courier Board', pipeline: 'Value Pipeline',
+    cities: 'By City', done: 'Completed'
   };
 
   const BOX_COLS = [
@@ -124,7 +126,9 @@
   }
   function toggleSidebar() {
     const sb = $('#sidebar');
+    const bd = $('#sidebar-backdrop');
     if (sb) sb.classList.toggle('open');
+    if (bd) bd.classList.toggle('open', sb && sb.classList.contains('open'));
   }
   function toggleCollapse() {
     const shell = $('#app-screen');
@@ -139,6 +143,23 @@
     setView('fms');
     const fs = $('#fms-search');
     if (fs) { fs.value = q; renderFmsSheet(); }
+  }
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('joolry_fms_theme', t); } catch (e) {}
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = t === 'dark' ? '#0f1218' : '#F7F4EE';
+    const btn = $('#theme-btn');
+    if (btn) btn.textContent = t === 'dark' ? '☀ Light' : '◐ Dark';
+  }
+  function toggleTheme() {
+    const cur = document.documentElement.getAttribute('data-theme') || 'light';
+    applyTheme(cur === 'dark' ? 'light' : 'dark');
+  }
+  function initTheme() {
+    let t = 'light';
+    try { t = localStorage.getItem('joolry_fms_theme') || 'light'; } catch (e) {}
+    applyTheme(t);
   }
 
   /** Strict nav: only show tabs the user actually needs */
@@ -230,13 +251,18 @@
     renderKanban();
     renderLate();
     renderPipeline();
+    renderInsights();
+    renderDue();
+    renderCourier();
+    renderCities();
+    renderDone();
   }
 
   function setView(v) {
     if (v === 'mywork' && (isViewer() || !hasAnyBox())) { toast('No tasks for you', 'error'); return; }
     state.view = v;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-    ['dashboard','fms','mywork','kanban','late','pipeline'].forEach(id => {
+    ['dashboard','insights','mywork','kanban','due','late','fms','courier','pipeline','cities','done'].forEach(id => {
       const el = $('#view-' + id);
       if (el) el.style.display = id === v ? 'block' : 'none';
     });
@@ -245,6 +271,8 @@
     // close mobile sidebar
     const sb = $('#sidebar');
     if (sb) sb.classList.remove('open');
+    const bd = $('#sidebar-backdrop');
+    if (bd) bd.classList.remove('open');
     if (v === 'fms') renderFmsSheet();
     if (v === 'late') renderLate();
     if (v === 'mywork') renderMyWork();
@@ -258,6 +286,11 @@
     }
     if (v === 'dashboard') renderDashboard();
     if (v === 'pipeline') renderPipeline();
+    if (v === 'insights') renderInsights();
+    if (v === 'due') renderDue();
+    if (v === 'courier') renderCourier();
+    if (v === 'cities') renderCities();
+    if (v === 'done') renderDone();
   }
 
   function isOpen(o) {
@@ -853,6 +886,166 @@
   }
 
 
+
+  function isDueToday(o) {
+    if (!isOpen(o)) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    const boxes = [o.box2, o.box3, o.box4, o.box5];
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      if (!b || String(b.status || '').toLowerCase() === 'done') continue;
+      const pln = String(b.planned || '').slice(0, 10);
+      if (pln && pln <= today) return true;
+    }
+    return false;
+  }
+
+  function renderDue() {
+    const list = state.orders.filter(isDueToday).sort((a, b) => worstDelay(b) - worstDelay(a));
+    const el = $('#due-list'); if (!el) return;
+    if (!list.length) { el.innerHTML = '<div class="empty">Nothing due today 🎉</div>'; return; }
+    el.innerHTML = list.map(o => {
+      const st = currentStage(o);
+      const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
+      const d = worstDelay(o);
+      const showBtn = n && canActOnBox(o, n);
+      return `<div class="work-card ${d > 0 ? 'late' : ''}">
+        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
+          <div class="k-id">${esc(o.orderId)} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
+          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
+          <div class="k-meta">${STAGE_LABELS[st] || st} ${d > 0 ? '· <span class="badge late">+' + d.toFixed(1) + 'h</span>' : ''}</div>
+        </div>
+        ${showBtn ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Done</button>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  function renderCourier() {
+    const open = state.orders.filter(isOpen);
+    const withAwb = open.filter(o => o.awb || o.courier);
+    const noAwb = open.filter(o => !o.awb && !o.courier);
+    const auto = open.filter(o => String(o.courierAutoUpdate || '').toLowerCase() === 'yes');
+    const cs = $('#courier-stats');
+    if (cs) {
+      cs.innerHTML = `
+        <div class="stat-card"><div class="label">Open</div><div class="value">${open.length}</div></div>
+        <div class="stat-card ok"><div class="label">With AWB</div><div class="value">${withAwb.length}</div></div>
+        <div class="stat-card late"><div class="label">No courier</div><div class="value">${noAwb.length}</div></div>
+        <div class="stat-card gold"><div class="label">Auto-update</div><div class="value">${auto.length}</div></div>`;
+    }
+    const el = $('#courier-list'); if (!el) return;
+    const sorted = open.slice().sort((a, b) => {
+      const aa = (a.awb || a.courier) ? 1 : 0;
+      const bb = (b.awb || b.courier) ? 1 : 0;
+      return aa - bb;
+    });
+    el.innerHTML = sorted.length ? sorted.map(o => {
+      const has = !!(o.awb || o.courier);
+      return `<div class="work-card ${has ? '' : 'late'}">
+        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
+          <div class="k-id">${esc(o.orderId)} ${has ? '<span class="badge ok">Tracked</span>' : '<span class="badge late">No AWB</span>'}</div>
+          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
+          <div class="k-meta">${esc(o.courier || '—')} · ${esc(o.awb || 'no AWB')} · Auto: ${esc(o.courierAutoUpdate || 'No')}</div>
+        </div>
+      </div>`;
+    }).join('') : '<div class="empty">No open orders</div>';
+  }
+
+  function renderCities() {
+    const open = state.orders.filter(isOpen);
+    const map = {};
+    open.forEach(o => {
+      const c = (o.city || 'Unknown').trim() || 'Unknown';
+      if (!map[c]) map[c] = { n: 0, v: 0, orders: [] };
+      map[c].n++;
+      map[c].v += parseFloat(o.orderValue) || 0;
+      map[c].orders.push(o);
+    });
+    const cities = Object.keys(map).sort((a, b) => map[b].v - map[a].v);
+    const el = $('#cities-list'); if (!el) return;
+    if (!cities.length) { el.innerHTML = '<div class="empty">No open orders</div>'; return; }
+    el.innerHTML = cities.map(c => {
+      const g = map[c];
+      const rows = g.orders.slice(0, 6).map(o =>
+        `<div class="city-ord" onclick="App.openOrder('${esc(o.orderId)}')"><strong>${esc(o.orderId)}</strong> · ${money(o.orderValue)} · ${esc(STAGE_LABELS[currentStage(o)] || '')}</div>`
+      ).join('');
+      return `<div class="city-card">
+        <h4>${esc(c)}</h4>
+        <div class="city-meta">${g.n} orders · ${money(g.v)}</div>
+        <div class="city-orders">${rows}${g.orders.length > 6 ? '<div class="muted" style="font-size:11px;padding:4px">+' + (g.orders.length - 6) + ' more</div>' : ''}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderDone() {
+    const list = state.orders.filter(o => !isOpen(o))
+      .sort((a, b) => String(b.entryTime || '').localeCompare(String(a.entryTime || '')))
+      .slice(0, 40);
+    const el = $('#done-list'); if (!el) return;
+    if (!list.length) { el.innerHTML = '<div class="empty">No completed orders in list</div>'; return; }
+    el.innerHTML = list.map(o => `
+      <div class="work-card">
+        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
+          <div class="k-id">${esc(o.orderId)} <span class="badge ok">${esc(o.overallStatus || 'Done')}</span></div>
+          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
+          <div class="k-meta">${esc(o.city || '')} · ${fmtDate(o.entryTime)}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  function renderInsights() {
+    const open = state.orders.filter(isOpen);
+    const late = open.filter(o => worstDelay(o) > 0);
+    const val = open.reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
+    const mine = open.filter(orderNeedsMyBox);
+    const is = $('#insights-stats');
+    if (is) {
+      is.innerHTML = `
+        <div class="stat-card"><div class="label">Open</div><div class="value">${open.length}</div></div>
+        <div class="stat-card late"><div class="label">Late</div><div class="value">${late.length}</div></div>
+        <div class="stat-card gold"><div class="label">My work</div><div class="value">${mine.length}</div></div>
+        <div class="stat-card ok"><div class="label">Open value</div><div class="value" style="font-size:18px">${money(val)}</div></div>`;
+    }
+    const counts = { box2: 0, box3: 0, box4: 0, box5: 0, done: 0 };
+    state.orders.forEach(o => { counts[currentStage(o)]++; });
+    const total = Math.max(1, state.orders.length);
+    const mix = $('#insights-mix');
+    if (mix) {
+      mix.innerHTML = barHtml([
+        { l: 'Avail %', v: Math.round(100 * counts.box2 / total) },
+        { l: 'Pack %', v: Math.round(100 * counts.box3 / total), c: 'gold' },
+        { l: 'Client %', v: Math.round(100 * counts.box4 / total), c: 'rose' },
+        { l: 'Shopify %', v: Math.round(100 * counts.box5 / total), c: 'ok' }
+      ]);
+    }
+    let ontime = 0, mild = 0, high = 0;
+    open.forEach(o => {
+      const d = worstDelay(o);
+      if (d <= 0) ontime++; else if (d < 9) mild++; else high++;
+    });
+    const idel = $('#insights-delay');
+    if (idel) {
+      idel.innerHTML = barHtml([
+        { l: 'On time', v: ontime, c: 'ok' },
+        { l: '< 1d late', v: mild, c: 'gold' },
+        { l: '≥ 1d late', v: high, c: 'late' }
+      ]);
+    }
+    const clients = {};
+    open.forEach(o => {
+      const n = o.clientName || 'Unknown';
+      if (!clients[n]) clients[n] = 0;
+      clients[n] += parseFloat(o.orderValue) || 0;
+    });
+    const top = Object.keys(clients).sort((a, b) => clients[b] - clients[a]).slice(0, 10);
+    const ic = $('#insights-clients');
+    if (ic) {
+      ic.innerHTML = top.length
+        ? top.map(n => `<div class="mini-item"><span>${esc(n)}</span><span><strong>${money(clients[n])}</strong></span></div>`).join('')
+        : '<div class="empty">No data</div>';
+    }
+  }
+
   function renderPipeline() {
     const open = state.orders.filter(isOpen);
     const stages = [
@@ -902,7 +1095,7 @@
   }
 
   window.App = {
-    boot, doLogin, doLogout, refresh, setView, toggleSidebar, toggleCollapse, globalSearch,
+    boot, doLogin, doLogout, refresh, setView, toggleSidebar, toggleCollapse, globalSearch, toggleTheme,
     openOrder, closeDetail, markDone, quickDone, saveCourier, saveOrderEdit,
     renderKanban, renderFmsSheet
   };
