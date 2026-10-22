@@ -1,5 +1,4 @@
-// JOOLRY Order FMS v2.2 — Ready Product Website Order
-// Boxes: 2=Availability | 3=Pack & Dispatch | 4=Client Update | 5=Shopify Fulfil
+// JOOLRY Order FMS v2.3 — Email login + Role (Admin/Ops/Viewer) + Allowed Boxes + Manual Order + Activity
 (function () {
   'use strict';
   const C = window.Core;
@@ -8,13 +7,8 @@
         fmtDate = C.fmtDate, money = C.money, $ = C.$, $$ = C.$$;
 
   let state = {
-    user: null,
-    orders: [],
-    steps: [],
-    allowedBoxes: [],
-    view: 'dashboard',
-    selected: null,
-    loading: false
+    user: null, orders: [], steps: [], allowedBoxes: [],
+    view: 'dashboard', selected: null, loading: false
   };
 
   const BOX_COLS = [
@@ -24,21 +18,19 @@
     { key: 'box5', n: 5, label: 'Shopify Fulfil' },
     { key: 'done', n: 0, label: 'Done / Closed' }
   ];
-
   const STAGE_LABELS = {
-    box2: 'Availability',
-    box3: 'Pack & Dispatch',
-    box4: 'Client Update',
-    box5: 'Shopify Fulfil',
-    done: 'Done'
+    box2: 'Availability', box3: 'Pack & Dispatch',
+    box4: 'Client Update', box5: 'Shopify Fulfil', done: 'Done'
   };
 
-  function isAdmin() {
-    return state.user && String(state.user.role || '').toLowerCase() === 'admin';
-  }
+  function role() { return String(state.user && state.user.role || '').toLowerCase(); }
+  function isAdmin() { return role() === 'admin'; }
+  function isViewer() { return role() === 'viewer'; }
+  function isOpsOrAdmin() { return isAdmin() || role() === 'ops'; }
 
   function canDoBox(n) {
     if (isAdmin()) return true;
+    if (isViewer()) return false;
     return state.allowedBoxes.indexOf(Number(n)) !== -1;
   }
 
@@ -76,9 +68,19 @@
     $('#app-screen').style.display = 'block';
     if (state.user) {
       $('#user-name').textContent = state.user.name || state.user.username;
-      $('#user-role').textContent = state.user.role || '';
+      $('#user-role').textContent = (state.user.role || '') +
+        (state.allowedBoxes && state.allowedBoxes.length ? ' · boxes ' + state.allowedBoxes.join(',') : '');
     }
-    $$('.admin-only').forEach(el => { el.style.display = isAdmin() ? '' : 'none'; });
+    applyNavAccess();
+  }
+
+  function applyNavAccess() {
+    $$('.nav-btn').forEach(btn => {
+      const need = btn.dataset.need;
+      if (!need) { btn.style.display = ''; return; }
+      if (need === 'admin') btn.style.display = isAdmin() ? '' : 'none';
+      else if (need === 'ops') btn.style.display = isOpsOrAdmin() ? '' : 'none';
+    });
   }
 
   async function doLogin() {
@@ -86,7 +88,7 @@
     const p = $('#login-pass').value;
     const err = $('#login-error');
     err.textContent = '';
-    if (!u || !p) { err.textContent = 'Enter username & password'; return; }
+    if (!u || !p) { err.textContent = 'Enter email & password'; return; }
     const btn = $('#login-btn');
     btn.disabled = true; btn.textContent = 'Signing in…';
     const res = await rpc('login', [u, p]);
@@ -97,6 +99,7 @@
     }
     setSession(res.token, res.user);
     state.user = res.user;
+    state.allowedBoxes = res.user.allowedBoxes || [];
     showApp();
     await refresh();
   }
@@ -118,29 +121,36 @@
       else toast((ordRes && ordRes.error) || 'Load failed', 'error');
 
       if (bootRes && bootRes.success) {
-        state.steps = (bootRes.steps) || [];
+        state.steps = bootRes.steps || [];
+        if (bootRes.user) {
+          state.user = Object.assign({}, state.user, bootRes.user);
+          state.allowedBoxes = bootRes.user.allowedBoxes || state.allowedBoxes || [];
+        }
         computeAllowed();
       } else {
         const st = await rpc('getSteps', []);
         if (st && st.success) state.steps = st.steps || [];
         computeAllowed();
       }
+      applyNavAccess();
       renderAll();
+      if (state.view === 'activity' && isAdmin()) loadActivity();
     } finally {
       setLoading(false);
     }
   }
 
   function computeAllowed() {
-    if (isAdmin()) {
-      state.allowedBoxes = [2, 3, 4, 5];
+    if (isAdmin()) { state.allowedBoxes = [2, 3, 4, 5]; return; }
+    if (state.user && state.user.allowedBoxes && state.user.allowedBoxes.length) {
+      state.allowedBoxes = state.user.allowedBoxes.map(Number).filter(n => n >= 2 && n <= 5);
       return;
     }
+    // fallback from steps
     const uname = String(state.user && state.user.username || '').toLowerCase();
     const set = {};
     (state.steps || []).forEach(s => {
-      const list = String(s.allowed || '').toLowerCase().split(',');
-      list.forEach(x => {
+      String(s.allowed || '').toLowerCase().split(',').forEach(x => {
         if (x.trim() === uname) set[parseInt(s.boxNo, 10)] = true;
       });
     });
@@ -149,27 +159,32 @@
 
   function renderAll() {
     renderDashboard();
-    renderMyWork();
+    if (isOpsOrAdmin()) renderMyWork();
     renderKanban();
     renderTable();
-    renderAnalytics();
+    if (isOpsOrAdmin()) renderAnalytics();
     if (isAdmin()) renderAdmin();
   }
 
   function setView(v) {
+    // gate
+    if (v === 'admin' || v === 'activity') { if (!isAdmin()) { toast('Admin only', 'error'); return; } }
+    if (v === 'mywork' || v === 'analytics' || v === 'manual') {
+      if (!isOpsOrAdmin()) { toast('No access', 'error'); return; }
+    }
     state.view = v;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-    ['dashboard', 'mywork', 'kanban', 'table', 'analytics', 'admin'].forEach(id => {
+    ['dashboard', 'mywork', 'kanban', 'table', 'analytics', 'manual', 'activity', 'admin'].forEach(id => {
       const el = $('#view-' + id);
       if (el) el.style.display = id === v ? 'block' : 'none';
     });
+    if (v === 'activity') loadActivity();
   }
 
   function isOpen(o) {
     const s = String(o.overallStatus || '').toLowerCase();
     return s !== 'closed' && s !== 'done';
   }
-
   function worstDelay(o) {
     let w = 0;
     [o.box2, o.box3, o.box4, o.box5].forEach(b => {
@@ -180,7 +195,6 @@
     });
     return w;
   }
-
   function currentStage(o) {
     if (!isOpen(o)) return 'done';
     const cb = String(o.currentBox || '').toLowerCase();
@@ -190,15 +204,13 @@
     if (cb.indexOf('5') >= 0) return 'box5';
     if (!o.box2 || !o.box2.actual) return 'box2';
     if (!o.box3 || !o.box3.actual) return 'box3';
-    // Box 4 is conditional — if courier auto-update = Yes, skip to box5
     const auto = String(o.courierAutoUpdate || '').toLowerCase() === 'yes';
     if (!auto && (!o.box4 || !o.box4.actual)) return 'box4';
     if (!o.box5 || !o.box5.actual) return 'box5';
     return 'done';
   }
-
   function orderNeedsMyBox(o) {
-    if (!isOpen(o)) return false;
+    if (!isOpen(o) || isViewer()) return false;
     const st = currentStage(o);
     const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
     return n && canDoBox(n);
@@ -219,57 +231,39 @@
     const late = open.filter(o => worstDelay(o) > 0);
     const value = open.reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
     const mine = open.filter(orderNeedsMyBox);
-
     $('#stats-row').innerHTML = `
       <div class="stat-card"><div class="label">Open</div><div class="value">${open.length}</div></div>
       <div class="stat-card late"><div class="label">Late</div><div class="value">${late.length}</div></div>
       <div class="stat-card gold"><div class="label">My work</div><div class="value">${mine.length}</div></div>
-      <div class="stat-card ok"><div class="label">Open value</div><div class="value" style="font-size:20px">${money(value)}</div></div>
-    `;
-
+      <div class="stat-card ok"><div class="label">Open value</div><div class="value" style="font-size:20px">${money(value)}</div></div>`;
     const counts = { box2: 0, box3: 0, box4: 0, box5: 0, done: 0 };
     state.orders.forEach(o => { counts[currentStage(o)]++; });
     $('#chart-stages').innerHTML = barHtml([
-      { l: 'Availability', v: counts.box2 },
-      { l: 'Pack/Dispatch', v: counts.box3, c: 'gold' },
-      { l: 'Client update', v: counts.box4, c: 'rose' },
-      { l: 'Shopify', v: counts.box5, c: 'ok' },
+      { l: 'Availability', v: counts.box2 }, { l: 'Pack/Dispatch', v: counts.box3, c: 'gold' },
+      { l: 'Client update', v: counts.box4, c: 'rose' }, { l: 'Shopify', v: counts.box5, c: 'ok' },
       { l: 'Done', v: counts.done, c: 'ok' }
     ]);
-
     let ontime = 0, mild = 0, high = 0;
     open.forEach(o => {
       const d = worstDelay(o);
       if (d <= 0) ontime++; else if (d < 9) mild++; else high++;
     });
     $('#chart-delay').innerHTML = barHtml([
-      { l: 'On time', v: ontime, c: 'ok' },
-      { l: '< 1 day late', v: mild, c: 'gold' },
+      { l: 'On time', v: ontime, c: 'ok' }, { l: '< 1 day late', v: mild, c: 'gold' },
       { l: '≥ 1 day late', v: high, c: 'late' }
     ]);
-
     const pay = {};
-    open.forEach(o => {
-      const k = String(o.paymentMode || 'Unknown') || 'Unknown';
-      pay[k] = (pay[k] || 0) + 1;
-    });
+    open.forEach(o => { const k = String(o.paymentMode || 'Unknown'); pay[k] = (pay[k] || 0) + 1; });
     $('#chart-pay').innerHTML = barHtml(Object.keys(pay).map(k => ({ l: k, v: pay[k], c: 'gold' })));
-
     const city = {};
-    open.forEach(o => {
-      const k = String(o.city || '—').trim() || '—';
-      city[k] = (city[k] || 0) + 1;
-    });
+    open.forEach(o => { const k = String(o.city || '—').trim() || '—'; city[k] = (city[k] || 0) + 1; });
     const topCity = Object.keys(city).map(k => ({ l: k, v: city[k] })).sort((a, b) => b.v - a.v).slice(0, 6);
     $('#chart-city').innerHTML = barHtml(topCity.map((x, i) => ({ ...x, c: i === 0 ? 'gold' : '' })));
-
     const attn = open.filter(o => worstDelay(o) > 0).sort((a, b) => worstDelay(b) - worstDelay(a)).slice(0, 10);
     $('#attention-list').innerHTML = attn.length
-      ? attn.map(o => `
-        <div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
+      ? attn.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
           <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
-          <span class="badge late">+${worstDelay(o).toFixed(1)}h</span>
-        </div>`).join('')
+          <span class="badge late">+${worstDelay(o).toFixed(1)}h</span></div>`).join('')
       : '<div class="empty">No delayed orders 🎉</div>';
   }
 
@@ -283,15 +277,14 @@
       const st = currentStage(o);
       const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
       const d = worstDelay(o);
-      return `
-        <div class="work-card ${d > 0 ? 'late' : ''}">
-          <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
-            <div class="k-id">${esc(o.orderId)} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
-            <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
-            <div class="k-meta">${STAGE_LABELS[st] || st} ${d > 0 ? '· <span class="badge late">+' + d.toFixed(1) + 'h</span>' : ''}</div>
-          </div>
-          ${n && canDoBox(n) ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Box ${n} Done</button>` : ''}
-        </div>`;
+      return `<div class="work-card ${d > 0 ? 'late' : ''}">
+        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
+          <div class="k-id">${esc(o.orderId)} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
+          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
+          <div class="k-meta">${STAGE_LABELS[st] || st} ${d > 0 ? '· <span class="badge late">+' + d.toFixed(1) + 'h</span>' : ''}</div>
+        </div>
+        ${n && canDoBox(n) ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Box ${n} Done</button>` : ''}
+      </div>`;
     }).join('');
   }
 
@@ -301,33 +294,26 @@
     let list = state.orders.slice();
     if (filter === 'open') list = list.filter(isOpen);
     if (filter === 'mine') list = list.filter(orderNeedsMyBox);
-    if (q) {
-      list = list.filter(o =>
-        String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
-        String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
-        String(o.shopifyNo || '').toLowerCase().indexOf(q) >= 0
-      );
-    }
+    if (q) list = list.filter(o =>
+      String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
+      String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
+      String(o.shopifyNo || '').toLowerCase().indexOf(q) >= 0);
     const buckets = { box2: [], box3: [], box4: [], box5: [], done: [] };
     list.forEach(o => { (buckets[currentStage(o)] || buckets.done).push(o); });
-
     $('#kanban-board').innerHTML = BOX_COLS.map(col => {
       const cards = buckets[col.key] || [];
-      return `
-        <div class="kanban-col">
-          <div class="kanban-col-head"><span>${col.label}</span><span class="count">${cards.length}</span></div>
-          <div class="kanban-col-body">
-            ${cards.map(o => {
-              const d = worstDelay(o);
-              return `
-                <div class="k-card ${d > 0 ? 'late' : ''}" onclick="App.openOrder('${esc(o.orderId)}')">
-                  <div class="k-id">${esc(o.orderId)}</div>
-                  <div class="k-client">${esc(o.clientName || '—')}</div>
-                  <div class="k-meta"><span>${money(o.orderValue)}</span><span>${d > 0 ? '+' + d.toFixed(1) + 'h' : esc(o.city || '')}</span></div>
-                </div>`;
-            }).join('') || '<div class="empty" style="padding:16px 8px">Empty</div>'}
-          </div>
-        </div>`;
+      return `<div class="kanban-col">
+        <div class="kanban-col-head"><span>${col.label}</span><span class="count">${cards.length}</span></div>
+        <div class="kanban-col-body">
+          ${cards.map(o => {
+            const d = worstDelay(o);
+            return `<div class="k-card ${d > 0 ? 'late' : ''}" onclick="App.openOrder('${esc(o.orderId)}')">
+              <div class="k-id">${esc(o.orderId)}</div>
+              <div class="k-client">${esc(o.clientName || '—')}</div>
+              <div class="k-meta"><span>${money(o.orderValue)}</span><span>${d > 0 ? '+' + d.toFixed(1) + 'h' : esc(o.city || '')}</span></div>
+            </div>`;
+          }).join('') || '<div class="empty" style="padding:16px 8px">Empty</div>'}
+        </div></div>`;
     }).join('');
   }
 
@@ -338,13 +324,10 @@
     if (filter === 'open') list = list.filter(isOpen);
     if (filter === 'late') list = list.filter(o => isOpen(o) && worstDelay(o) > 0);
     if (filter === 'mine') list = list.filter(orderNeedsMyBox);
-    if (q) {
-      list = list.filter(o =>
-        String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
-        String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
-        String(o.shopifyNo || '').toLowerCase().indexOf(q) >= 0
-      );
-    }
+    if (q) list = list.filter(o =>
+      String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
+      String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
+      String(o.shopifyNo || '').toLowerCase().indexOf(q) >= 0);
     $('#table-body').innerHTML = list.map(o => {
       const d = worstDelay(o);
       const st = currentStage(o);
@@ -368,14 +351,12 @@
       <div class="stat-card"><div class="label">Total orders</div><div class="value">${state.orders.length}</div></div>
       <div class="stat-card"><div class="label">Open</div><div class="value">${open.length}</div></div>
       <div class="stat-card ok"><div class="label">Closed</div><div class="value">${closed.length}</div></div>
-      <div class="stat-card gold"><div class="label">Total value</div><div class="value" style="font-size:20px">${money(totalVal)}</div></div>
-    `;
+      <div class="stat-card gold"><div class="label">Total value</div><div class="value" style="font-size:20px">${money(totalVal)}</div></div>`;
     const counts = { box2: 0, box3: 0, box4: 0, box5: 0, done: 0 };
     const vals = { box2: 0, box3: 0, box4: 0, box5: 0, done: 0 };
     state.orders.forEach(o => {
       const st = currentStage(o);
-      counts[st]++;
-      vals[st] += parseFloat(o.orderValue) || 0;
+      counts[st]++; vals[st] += parseFloat(o.orderValue) || 0;
     });
     $('#an-pipeline').innerHTML = barHtml([
       { l: 'Availability', v: counts.box2 }, { l: 'Pack', v: counts.box3, c: 'gold' },
@@ -383,10 +364,8 @@
       { l: 'Done', v: counts.done, c: 'ok' }
     ]);
     $('#an-value').innerHTML = barHtml([
-      { l: 'Avail', v: Math.round(vals.box2), c: '' },
-      { l: 'Pack', v: Math.round(vals.box3), c: 'gold' },
-      { l: 'Client', v: Math.round(vals.box4), c: 'rose' },
-      { l: 'Shopify', v: Math.round(vals.box5), c: 'ok' },
+      { l: 'Avail', v: Math.round(vals.box2) }, { l: 'Pack', v: Math.round(vals.box3), c: 'gold' },
+      { l: 'Client', v: Math.round(vals.box4), c: 'rose' }, { l: 'Shopify', v: Math.round(vals.box5), c: 'ok' },
       { l: 'Done', v: Math.round(vals.done), c: 'ok' }
     ]);
     let b2 = 0, b3 = 0, b4 = 0, b5 = 0;
@@ -405,33 +384,79 @@
   function renderAdmin() {
     $('#admin-users').innerHTML = `
       <div class="mini-item"><span>Logged in as <strong>${esc(state.user.username)}</strong> (${esc(state.user.role)})</span></div>
-      <div class="mini-item"><span>Allowed boxes: <strong>Admin = all (2–5)</strong></span></div>
-      <div class="view-hint" style="margin-top:10px">Users tab in Google Sheet is source of truth for login & roles.<br>Steps → Allowed Usernames controls who can mark which box.</div>
-    `;
+      <div class="mini-item"><span>Allowed boxes: <strong>${isAdmin() ? 'all (2–5)' : state.allowedBoxes.join(', ') || 'none'}</strong></span></div>
+      <div class="view-hint" style="margin-top:10px">Users sheet: Username = Email · Role = Admin / Ops / Viewer · Col H = Allowed Boxes (e.g. 2,3)</div>`;
     const open = state.orders.filter(isOpen);
     $('#admin-orders').innerHTML = open.slice(0, 30).map(o => `
       <div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
         <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')} · ${money(o.orderValue)}</span>
         <span class="badge">${esc(o.overallStatus || 'Open')}</span>
-      </div>
-    `).join('') || '<div class="empty">No open orders</div>';
+      </div>`).join('') || '<div class="empty">No open orders</div>';
+  }
+
+  async function loadActivity() {
+    if (!isAdmin()) return;
+    const res = await rpc('getActivityLog', [80]);
+    if (!res || !res.success) {
+      $('#activity-body').innerHTML = '<tr><td colspan="6" class="empty">' + esc((res && res.error) || 'Failed') + '</td></tr>';
+      return;
+    }
+    const rows = res.rows || [];
+    $('#activity-body').innerHTML = rows.length
+      ? rows.map(r => `<tr>
+          <td>${esc(r.timestamp)}</td><td>${esc(r.username)}</td><td>${esc(r.action)}</td>
+          <td>${esc(r.orderId)}</td><td>${esc(r.box)}</td><td>${esc(r.details)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="empty">No activity yet</td></tr>';
+  }
+
+  async function createManualOrder() {
+    if (!isOpsOrAdmin()) { toast('No access', 'error'); return; }
+    const client = ($('#m-client').value || '').trim();
+    if (!client) { toast('Client name required', 'error'); return; }
+    const payload = {
+      clientName: client,
+      phone: ($('#m-phone').value || '').trim(),
+      email: ($('#m-email').value || '').trim(),
+      city: ($('#m-city').value || '').trim(),
+      pincode: ($('#m-pincode').value || '').trim(),
+      address: ($('#m-address').value || '').trim(),
+      orderValue: $('#m-value').value || 0,
+      paymentMode: $('#m-pay').value || 'Prepaid',
+      notes: ($('#m-notes').value || '').trim(),
+      items: []
+    };
+    const prod = ($('#m-product').value || '').trim();
+    if (prod) {
+      payload.items.push({
+        product: prod,
+        qty: Number($('#m-qty').value) || 1,
+        value: Number(payload.orderValue) || 0
+      });
+    }
+    setLoading(true);
+    try {
+      const res = await rpc('createManualOrder', [payload]);
+      if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
+      toast('Order created: ' + res.orderId, 'ok');
+      ['m-client','m-phone','m-email','m-city','m-pincode','m-address','m-value','m-notes','m-product'].forEach(id => {
+        const el = $('#' + id); if (el) el.value = '';
+      });
+      await refresh();
+      if (res.orderId) openOrder(res.orderId);
+    } finally { setLoading(false); }
   }
 
   async function openOrder(orderId) {
     setLoading(true);
     try {
       const res = await rpc('getOrderDetail', [orderId]);
-      if (!res || !res.success) {
-        toast((res && res.error) || 'Could not load', 'error');
-        return;
-      }
+      if (!res || !res.success) { toast((res && res.error) || 'Could not load', 'error'); return; }
       state.selected = res.order;
       renderDetail(res.order);
       $('#detail-overlay').classList.add('open');
       $('#detail-panel').classList.add('open');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
 
   function closeDetail() {
@@ -450,8 +475,7 @@
       <div><label>Payment</label><div>${esc(o.paymentMode || '—')}</div></div>
       <div><label>Status</label><div>${esc(o.overallStatus || '—')}</div></div>
       <div><label>Current</label><div>${esc(o.currentBox || '—')}</div></div>
-      <div><label>Entry</label><div>${fmtDate(o.entryTime)}</div></div>
-    `;
+      <div><label>Entry</label><div>${fmtDate(o.entryTime)}</div></div>`;
 
     const adminEdit = $('#d-admin-edit');
     if (isAdmin()) {
@@ -462,9 +486,7 @@
       $('#e-value').value = o.orderValue || '';
       $('#e-notes').value = o.notes || '';
       $('#e-status').value = o.overallStatus || '';
-    } else {
-      adminEdit.style.display = 'none';
-    }
+    } else adminEdit.style.display = 'none';
 
     const items = o.items || [];
     $('#d-items').innerHTML = items.length
@@ -486,24 +508,21 @@
         delayTxt = delay > 0 ? `+${delay.toFixed(1)}h late` : (delay < 0 ? `${Math.abs(delay).toFixed(1)}h left` : 'on time');
       }
       const can = canDoBox(b.n);
-      return `
-        <div class="box-row ${isDone ? 'done' : ''} ${delay > 0 ? 'late' : ''}">
-          <div class="box-head">
-            <span>Box ${b.n} — ${b.label}</span>
-            <span class="muted">${isDone ? 'Done' : (d.status || 'Open')}</span>
-          </div>
-          <div class="box-meta">
-            <span>Planned: ${fmtDate(d.planned)}</span>
-            <span>Actual: ${fmtDate(d.actual)}</span>
-            <span>${d.doneBy ? 'By: ' + esc(d.doneBy) : ''}</span>
-            <span class="${delay > 0 ? 'late' : ''}">${delayTxt}</span>
-          </div>
-          ${!isDone && can ? `<button class="btn-done" onclick="App.markDone(${b.n})">Mark Done</button>` : ''}
-          ${!isDone && !can ? `<div class="muted" style="font-size:11px;margin-top:6px">No access to complete this box</div>` : ''}
-        </div>`;
+      return `<div class="box-row ${isDone ? 'done' : ''} ${delay > 0 ? 'late' : ''}">
+        <div class="box-head"><span>Box ${b.n} — ${b.label}</span>
+          <span class="muted">${isDone ? 'Done' : (d.status || 'Open')}</span></div>
+        <div class="box-meta">
+          <span>Planned: ${fmtDate(d.planned)}</span>
+          <span>Actual: ${fmtDate(d.actual)}</span>
+          <span>${d.doneBy ? 'By: ' + esc(d.doneBy) : ''}</span>
+          <span class="${delay > 0 ? 'late' : ''}">${delayTxt}</span>
+        </div>
+        ${!isDone && can ? `<button class="btn-done" onclick="App.markDone(${b.n})">Mark Done</button>` : ''}
+        ${!isDone && !can ? `<div class="muted" style="font-size:11px;margin-top:6px">No access to complete this box</div>` : ''}
+      </div>`;
     }).join('');
 
-    const canCourier = isAdmin() || state.allowedBoxes.length > 0;
+    const canCourier = isOpsOrAdmin();
     $('#d-courier').value = o.courier || '';
     $('#d-awb').value = o.awb || '';
     $('#d-auto').value = String(o.courierAutoUpdate || '').toLowerCase() === 'yes' ? 'Yes' : 'No';
@@ -540,7 +559,7 @@
   }
 
   async function saveCourier() {
-    if (!state.selected) return;
+    if (!state.selected || isViewer()) return;
     setLoading(true);
     try {
       const res = await rpc('updateCourier', [
@@ -571,7 +590,7 @@
           overallStatus: $('#e-status').value
         }
       ]);
-      if (!res || !res.success) { toast((res && res.error) || 'Failed — deploy latest Code.gs', 'error'); return; }
+      if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
       toast('Order updated', 'ok');
       await openOrder(state.selected.orderId);
       await refresh();
@@ -586,7 +605,7 @@
   window.App = {
     boot, doLogin, doLogout, refresh, setView,
     openOrder, closeDetail, markDone, quickDone, saveCourier, saveOrderEdit,
-    renderKanban, renderTable
+    renderKanban, renderTable, createManualOrder
   };
 
   document.addEventListener('DOMContentLoaded', boot);
