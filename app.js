@@ -12,15 +12,21 @@
   };
 
   const BOX_COLS = [
-    { key: 'box2', n: 2, label: 'Availability' },
-    { key: 'box3', n: 3, label: 'Pack & Dispatch' },
-    { key: 'box4', n: 4, label: 'Client Update' },
-    { key: 'box5', n: 5, label: 'Shopify Fulfil' },
+    { key: 'box2', n: 2, label: '1. Availability Check' },
+    { key: 'box3', n: 3, label: '2. Pack & Dispatch' },
+    { key: 'box4', n: 4, label: '3. Client Update' },
+    { key: 'box5', n: 5, label: '4. Shopify Status' },
     { key: 'done', n: 0, label: 'Done' }
   ];
   const STAGE_LABELS = {
-    box2: 'Availability', box3: 'Pack & Dispatch',
-    box4: 'Client Update', box5: 'Shopify Fulfil', done: 'Done'
+    box2: 'Availability Check', box3: 'Pack & Dispatch',
+    box4: 'Client Update', box5: 'Shopify Status', done: 'Done'
+  };
+  const BOX_FULL = {
+    2: 'Product Availability Check (Inventory Audit)',
+    3: 'Order Packing and Dispatch',
+    4: 'Client Update (Tracking)',
+    5: 'Update Delivery Status in Shopify'
   };
 
   function role() { return String(state.user && state.user.role || '').toLowerCase(); }
@@ -36,6 +42,20 @@
   }
   function canCourier() { return isAdmin() || (isOps() && hasAnyBox()); }
   function canManual() { return isAdmin() || isOps(); }
+
+  /** Sequential gate: Box N only if previous box is Done */
+  function isBoxDone(o, n) {
+    if (!o) return false;
+    const b = o['box' + n];
+    return b && String(b.status || '').toLowerCase() === 'done';
+  }
+  function isPrevDone(o, n) {
+    if (n <= 2) return true; // Box 2 has no previous
+    return isBoxDone(o, n - 1);
+  }
+  function canActOnBox(o, n) {
+    return canDoBox(n) && isPrevDone(o, n) && !isBoxDone(o, n);
+  }
 
   function setLoading(on) {
     state.loading = on;
@@ -119,8 +139,8 @@
     setLoading(true);
     try {
       const [ordRes, bootRes] = await Promise.all([
-        rpc('getOrders', ['all']),
-        rpc('getBootData', [])
+        rpc('getOrders', ['all'], 60000),
+        rpc('getBootData', [], 45000)
       ]);
       if (ordRes && ordRes.success) state.orders = ordRes.orders || [];
       else toast((ordRes && ordRes.error) || 'Load failed', 'error');
@@ -372,13 +392,14 @@
       const st = currentStage(o);
       const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
       const d = worstDelay(o);
+      const showBtn = n && canActOnBox(o, n);
       return `<div class="work-card ${d > 0 ? 'late' : ''}">
         <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
           <div class="k-id">${esc(o.orderId)} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
           <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
           <div class="k-meta">${STAGE_LABELS[st] || st} ${d > 0 ? '· <span class="badge late">+' + d.toFixed(1) + 'h</span>' : ''}</div>
         </div>
-        ${n && canDoBox(n) ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Box ${n} Done</button>` : ''}
+        ${showBtn ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Done</button>` : ''}
       </div>`;
     }).join('');
   }
@@ -401,9 +422,9 @@
 
     board.innerHTML = cols.map(col => {
       const cards = buckets[col.key] || [];
-      const canAct = col.key !== 'done' && canDoBox(col.n);
+      const colCanAct = col.key !== 'done' && canDoBox(col.n);
 
-      return `<div class="kanban-col ${canAct ? 'can-act' : ''}">
+      return `<div class="kanban-col ${colCanAct ? 'can-act' : ''}">
         <div class="kanban-col-head">
           <span>${col.label}</span>
           <span class="count">${cards.length}</span>
@@ -412,6 +433,7 @@
           ${cards.length ? cards.map(o => {
             const d = worstDelay(o);
             const isMine = orderNeedsMyBox(o);
+            const showBtn = col.key !== 'done' && canActOnBox(o, col.n);
             return `<div class="k-card ${d > 0 ? 'late' : ''} ${isMine ? 'mine' : ''}" onclick="App.openOrder('${esc(o.orderId)}')">
               <div class="k-id">
                 ${esc(o.orderId)}
@@ -422,9 +444,10 @@
                 <span>${money(o.orderValue)}</span>
                 <span>${d > 0 ? '<span class="badge late">+' + d.toFixed(1) + 'h</span>' : esc(o.city || '')}</span>
               </div>
-              ${canAct && isMine ?
+              ${showBtn ?
                 `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${col.n})">Mark Done</button>`
-                : ''}
+                : (col.key !== 'done' && isMine && !isPrevDone(o, col.n) ?
+                  `<div class="step-locked">🔒 Prev step pending</div>` : '')}
             </div>`;
           }).join('') : '<div class="empty" style="padding:16px 8px">Empty</div>'}
         </div>
@@ -445,16 +468,17 @@
     if (!list.length) { el.innerHTML = '<div class="empty">No late orders 🎉</div>'; return; }
     el.innerHTML = list.map(o => {
       const st = currentStage(o);
+      const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
       const d = worstDelay(o);
       const mine = orderNeedsMyBox(o);
+      const showBtn = mine && n && canActOnBox(o, n);
       return `<div class="work-card late">
         <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
           <div class="k-id">${esc(o.orderId)} ${mine ? '<span class="badge gold">Yours</span>' : ''} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
           <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
           <div class="k-meta">${STAGE_LABELS[st] || st} · <span class="badge late">+${d.toFixed(1)}h</span></div>
         </div>
-        ${mine && canDoBox({ box2: 2, box3: 3, box4: 4, box5: 5 }[st]) ?
-          `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${{ box2: 2, box3: 3, box4: 4, box5: 5 }[st]})">Mark Done</button>` : ''}
+        ${showBtn ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Done</button>` : ''}
       </div>`;
     }).join('');
   }
@@ -515,8 +539,11 @@
   async function openOrder(orderId) {
     setLoading(true);
     try {
-      const res = await rpc('getOrderDetail', [orderId]);
-      if (!res || !res.success) { toast((res && res.error) || 'Could not load', 'error'); return; }
+      const res = await rpc('getOrderDetail', [orderId], 45000);
+      if (!res || !res.success) {
+        toast((res && res.error) || 'Could not load order', 'error');
+        return;
+      }
       state.selected = res.order;
       renderDetail(res.order);
       $('#detail-overlay').classList.add('open');
@@ -531,16 +558,19 @@
 
   /** Detail: only show actions user can perform */
   function renderDetail(o) {
-    $('#d-title').textContent = o.orderId + '  ' + (o.shopifyNo || '');
+    const stage = currentStage(o);
+    $('#d-title').textContent = o.orderId + (o.shopifyNo ? '  ·  ' + o.shopifyNo : '');
     $('#d-info').innerHTML = `
       <div><label>Client</label><div>${esc(o.clientName || '—')}</div></div>
       <div><label>Phone</label><div>${esc(o.phone || '—')}</div></div>
       <div class="full"><label>Address</label><div>${esc(o.address || '—')}</div></div>
+      <div><label>City</label><div>${esc(o.city || '—')}</div></div>
       <div><label>Value</label><div>${money(o.orderValue)}</div></div>
       <div><label>Payment</label><div>${esc(o.paymentMode || '—')}</div></div>
       <div><label>Status</label><div>${esc(o.overallStatus || '—')}</div></div>
-      <div><label>Current</label><div>${esc(o.currentBox || '—')}</div></div>
-      <div><label>Entry</label><div>${fmtDate(o.entryTime)}</div></div>`;
+      <div><label>Current Step</label><div><strong>${esc(STAGE_LABELS[stage] || o.currentBox || '—')}</strong></div></div>
+      <div><label>Entry</label><div>${fmtDate(o.entryTime)}</div></div>
+      <div class="full"><label>Notes</label><div>${esc(o.notes || '—')}</div></div>`;
 
     // Admin edit — only Admin
     const adminEdit = $('#d-admin-edit');
@@ -553,17 +583,29 @@
       adminEdit.style.display = 'none';
     }
 
+    // Order Items — clear table style
     const items = o.items || [];
-    $('#d-items').innerHTML = items.length
-      ? items.map(it => `<div class="item-row"><span>${esc(it.product)}</span><span>×${it.qty}</span><span>${money(it.value)}</span></div>`).join('')
-      : '<div class="empty">No items</div>';
+    if (items.length) {
+      $('#d-items').innerHTML = `
+        <div class="items-table">
+          <div class="items-head"><span>Product / SKU</span><span>Qty</span><span>Value</span></div>
+          ${items.map(it => `
+            <div class="item-row">
+              <span class="item-name">${esc(it.product || it.name || it.sku || '—')}</span>
+              <span class="item-qty">×${it.qty || 1}</span>
+              <span class="item-val">${money(it.value || it.price || 0)}</span>
+            </div>`).join('')}
+        </div>`;
+    } else {
+      $('#d-items').innerHTML = '<div class="empty">No line items</div>';
+    }
 
-    // Boxes: show all for context, but Mark Done ONLY if canDoBox
+    // Boxes: sequential — next step unlocks only after previous is Done
     const boxes = [
-      { n: 2, label: 'Product Availability Check', data: o.box2 },
-      { n: 3, label: 'Order Packing & Dispatch', data: o.box3 },
-      { n: 4, label: 'Client Update (if no auto)', data: o.box4 },
-      { n: 5, label: 'Update Delivery Status in Shopify', data: o.box5 }
+      { n: 2, label: BOX_FULL[2], data: o.box2, tat: '1 day TAT' },
+      { n: 3, label: BOX_FULL[3], data: o.box3, tat: '1 day TAT' },
+      { n: 4, label: BOX_FULL[4], data: o.box4, tat: 'Next day of dispatch' },
+      { n: 5, label: BOX_FULL[5], data: o.box5, tat: '4–5 days post dispatch' }
     ];
     $('#d-boxes').innerHTML = boxes.map(b => {
       const d = b.data || {};
@@ -572,18 +614,32 @@
       let delayTxt = '';
       if (delay != null && !isNaN(delay))
         delayTxt = delay > 0 ? `+${delay.toFixed(1)}h late` : (delay < 0 ? `${Math.abs(delay).toFixed(1)}h left` : 'on time');
+
+      const prevOk = isPrevDone(o, b.n);
       const can = canDoBox(b.n);
-      // Viewer / no-access: no button, no "no access" noise if they can't do any box
+      const unlocked = canActOnBox(o, b.n);
+
       let actionHtml = '';
-      if (!isDone && can) {
+      if (isDone) {
+        actionHtml = `<div class="step-status done">✓ Completed</div>`;
+      } else if (unlocked) {
         actionHtml = `<button class="btn-done" onclick="App.markDone(${b.n})">Mark Done</button>`;
-      } else if (!isDone && hasAnyBox() && !can && !isViewer()) {
-        actionHtml = `<div class="muted" style="font-size:11px;margin-top:6px">Aapke access mein nahi</div>`;
+      } else if (!prevOk) {
+        actionHtml = `<div class="step-status locked">🔒 Pehle Box ${b.n - 1} complete karo</div>`;
+      } else if (hasAnyBox() && !can && !isViewer()) {
+        actionHtml = `<div class="step-status locked">Aapke access mein nahi</div>`;
+      } else if (!isViewer()) {
+        actionHtml = `<div class="step-status locked">Waiting</div>`;
       }
-      return `<div class="box-row ${isDone ? 'done' : ''} ${delay > 0 ? 'late' : ''}">
-        <div class="box-head"><span>Box ${b.n} — ${b.label}</span>
-          <span class="muted">${isDone ? 'Done' : (d.status || 'Open')}</span></div>
+
+      const isCurrent = !isDone && prevOk;
+      return `<div class="box-row ${isDone ? 'done' : ''} ${isCurrent ? 'current' : ''} ${delay > 0 ? 'late' : ''}">
+        <div class="box-head">
+          <span>Step ${b.n - 1} — ${b.label}</span>
+          <span class="muted">${isDone ? 'Done' : (isCurrent ? 'Current' : (d.status || 'Locked'))}</span>
+        </div>
         <div class="box-meta">
+          <span>TAT: ${b.tat}</span>
           <span>Planned: ${fmtDate(d.planned)}</span>
           <span>Actual: ${fmtDate(d.actual)}</span>
           <span>${d.doneBy ? 'By: ' + esc(d.doneBy) : ''}</span>
@@ -621,25 +677,44 @@
   }
 
   async function markDone(boxNo) {
-    if (!state.selected || !canDoBox(boxNo)) { toast('No access for this box', 'error'); return; }
-    if (!confirm('Mark Box ' + boxNo + ' Done?')) return;
+    if (!state.selected) return;
+    if (!canDoBox(boxNo)) { toast('No access for this step', 'error'); return; }
+    if (!isPrevDone(state.selected, boxNo)) {
+      toast('Pehle previous step complete karo (Box ' + (boxNo - 1) + ')', 'error');
+      return;
+    }
+    if (isBoxDone(state.selected, boxNo)) { toast('Already done', 'ok'); return; }
+    if (!confirm('Mark Step complete?\n' + (BOX_FULL[boxNo] || 'Box ' + boxNo))) return;
     setLoading(true);
     try {
-      const res = await rpc('markBoxDone', [state.selected.orderId, boxNo, '']);
-      if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
-      toast('Box ' + boxNo + ' done', 'ok');
+      const res = await rpc('markBoxDone', [state.selected.orderId, boxNo, ''], 45000);
+      if (!res || !res.success) {
+        toast((res && res.error) || 'Failed — try again', 'error');
+        return;
+      }
+      toast((BOX_FULL[boxNo] || 'Box ' + boxNo) + ' ✓ Done', 'ok');
       await openOrder(state.selected.orderId);
       await refresh();
     } finally { setLoading(false); }
   }
   async function quickDone(orderId, boxNo) {
     if (!canDoBox(boxNo)) { toast('No access', 'error'); return; }
-    if (!confirm('Mark Box ' + boxNo + ' Done?')) return;
+    // For quick action from board, we still need sequential check
+    const o = state.orders.find(x => String(x.orderId) === String(orderId));
+    if (o && !isPrevDone(o, boxNo)) {
+      toast('Pehle previous step complete karo', 'error');
+      return;
+    }
+    if (o && isBoxDone(o, boxNo)) { toast('Already done', 'ok'); return; }
+    if (!confirm('Mark Step complete?\n' + (BOX_FULL[boxNo] || 'Box ' + boxNo))) return;
     setLoading(true);
     try {
-      const res = await rpc('markBoxDone', [orderId, boxNo, '']);
-      if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
-      toast('Done', 'ok');
+      const res = await rpc('markBoxDone', [orderId, boxNo, ''], 45000);
+      if (!res || !res.success) {
+        toast((res && res.error) || 'Failed — try again', 'error');
+        return;
+      }
+      toast('Done ✓', 'ok');
       await refresh();
     } finally { setLoading(false); }
   }
