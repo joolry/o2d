@@ -1,4 +1,4 @@
-// JOOLRY Order FMS v2.7 — Sidebar + auto-refresh + insights
+// JOOLRY Order FMS v2.8 — Premium UI + collapse + pipeline
 (function () {
   'use strict';
   const C = window.Core;
@@ -13,7 +13,7 @@
   let pollTimer = null;
   const VIEW_TITLES = {
     dashboard: 'Dashboard', mywork: 'Pending Works', kanban: 'By Stages',
-    fms: 'All Orders', late: 'Late Orders'
+    fms: 'All Orders', late: 'Late Orders', pipeline: 'Value Pipeline'
   };
 
   const BOX_COLS = [
@@ -126,6 +126,20 @@
     const sb = $('#sidebar');
     if (sb) sb.classList.toggle('open');
   }
+  function toggleCollapse() {
+    const shell = $('#app-screen');
+    if (!shell) return;
+    shell.classList.toggle('collapsed');
+    const btn = document.querySelector('.collapse-btn');
+    if (btn) btn.textContent = shell.classList.contains('collapsed') ? '»' : '«';
+  }
+  function globalSearch() {
+    const q = ($('#global-search') && $('#global-search').value || '').trim();
+    if (!q) return;
+    setView('fms');
+    const fs = $('#fms-search');
+    if (fs) { fs.value = q; renderFmsSheet(); }
+  }
 
   /** Strict nav: only show tabs the user actually needs */
   function applyNavAccess() {
@@ -215,13 +229,14 @@
     if (hasAnyBox() && !isViewer()) renderMyWork();
     renderKanban();
     renderLate();
+    renderPipeline();
   }
 
   function setView(v) {
     if (v === 'mywork' && (isViewer() || !hasAnyBox())) { toast('No tasks for you', 'error'); return; }
     state.view = v;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-    ['dashboard','fms','mywork','kanban','late'].forEach(id => {
+    ['dashboard','fms','mywork','kanban','late','pipeline'].forEach(id => {
       const el = $('#view-' + id);
       if (el) el.style.display = id === v ? 'block' : 'none';
     });
@@ -242,6 +257,7 @@
       renderKanban();
     }
     if (v === 'dashboard') renderDashboard();
+    if (v === 'pipeline') renderPipeline();
   }
 
   function isOpen(o) {
@@ -305,13 +321,15 @@
       <span>${r.v}</span></div>`).join('');
   }
 
-  function filteredList(filterSel, searchSel) {
+  function filteredList(filterSel, searchSel, stageSel) {
     const q = ((searchSel && $(searchSel) && $(searchSel).value) || '').toLowerCase();
     const filter = (filterSel && $(filterSel) && $(filterSel).value) || 'open';
+    const stage = (stageSel && $(stageSel) && $(stageSel).value) || '';
     let list = state.orders.slice();
     if (filter === 'open') list = list.filter(isOpen);
     if (filter === 'late') list = list.filter(o => isOpen(o) && worstDelay(o) > 0);
     if (filter === 'mine') list = list.filter(orderNeedsMyBox);
+    if (stage) list = list.filter(o => currentStage(o) === stage);
     if (q) list = list.filter(o =>
       String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
       String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
@@ -429,15 +447,20 @@
 
   // ── FMS SHEET ──
   function renderFmsSheet() {
-    // Staff default filter = mine if they have boxes
-    const filterEl = $('#fms-filter');
-    if (filterEl && hasAnyBox() && !isAdmin() && !filterEl._touched) {
-      // leave as-is (user can change); don't force
+    const list = filteredList('#fms-filter', '#fms-search', '#fms-stage');
+    const sum = $('#fms-summary');
+    if (sum) {
+      const openN = list.filter(isOpen).length;
+      const lateN = list.filter(o => isOpen(o) && worstDelay(o) > 0).length;
+      const val = list.filter(isOpen).reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
+      sum.innerHTML = '<span class="chip">Showing <strong>' + list.length + '</strong></span>' +
+        '<span class="chip">Open <strong>' + openN + '</strong></span>' +
+        '<span class="chip">Late <strong>' + lateN + '</strong></span>' +
+        '<span class="chip">Value <strong>' + money(val) + '</strong></span>';
     }
-    const list = filteredList('#fms-filter', '#fms-search');
     const body = $('#fms-body'); if (!body) return;
     if (!list.length) {
-      body.innerHTML = '<tr><td colspan="13" class="empty">No orders</td></tr>';
+      body.innerHTML = '<tr><td colspan="14" class="empty">No orders</td></tr>';
       return;
     }
     body.innerHTML = list.map(o => {
@@ -452,6 +475,7 @@
         <td>${esc(o.clientName || '—')}</td>
         <td>${money(o.orderValue)}</td>
         <td>${esc(o.city || '—')}</td>
+        <td><span class="stage-chip">${esc(STAGE_LABELS[currentStage(o)] || '—')}</span></td>
         <td class="${b2p.cls}">${b2p.txt}</td><td class="${b2a.cls}">${b2a.txt}</td>
         <td class="${b3p.cls}">${b3p.txt}</td><td class="${b3a.cls}">${b3a.txt}</td>
         <td class="${b4p.cls}">${b4p.txt}</td><td class="${b4a.cls}">${b4a.txt}</td>
@@ -828,13 +852,57 @@
     } finally { setLoading(false); }
   }
 
+
+  function renderPipeline() {
+    const open = state.orders.filter(isOpen);
+    const stages = [
+      { key: 'box2', label: 'Availability' },
+      { key: 'box3', label: 'Pack & Dispatch' },
+      { key: 'box4', label: 'Client Update' },
+      { key: 'box5', label: 'Shopify Status' }
+    ];
+    const buckets = {};
+    stages.forEach(s => { buckets[s.key] = { n: 0, v: 0 }; });
+    open.forEach(o => {
+      const st = currentStage(o);
+      if (buckets[st]) {
+        buckets[st].n++;
+        buckets[st].v += parseFloat(o.orderValue) || 0;
+      }
+    });
+    const totalV = open.reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
+    const ps = $('#pipeline-stats');
+    if (ps) {
+      ps.innerHTML = stages.map(s =>
+        `<div class="stat-card"><div class="label">${s.label}</div><div class="value" style="font-size:20px">${money(buckets[s.key].v)}</div><div class="muted" style="font-size:11px;margin-top:4px">${buckets[s.key].n} orders</div></div>`
+      ).join('') + `<div class="stat-card ok"><div class="label">Total open</div><div class="value" style="font-size:20px">${money(totalV)}</div><div class="muted" style="font-size:11px;margin-top:4px">${open.length} orders</div></div>`;
+    }
+    const ch = $('#pipeline-chart');
+    if (ch) {
+      ch.innerHTML = barHtml(stages.map((s, i) => ({
+        l: s.label,
+        v: Math.round(buckets[s.key].v / 1000),
+        c: ['', 'gold', 'rose', 'ok'][i]
+      })));
+    }
+    const pl = $('#pipeline-list');
+    if (pl) {
+      const top = open.slice().sort((a, b) => (parseFloat(b.orderValue) || 0) - (parseFloat(a.orderValue) || 0)).slice(0, 12);
+      pl.innerHTML = top.length
+        ? top.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
+            <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
+            <span><strong>${money(o.orderValue)}</strong> · ${esc(STAGE_LABELS[currentStage(o)] || '')}</span></div>`).join('')
+        : '<div class="empty">No open orders</div>';
+    }
+  }
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   window.App = {
-    boot, doLogin, doLogout, refresh, setView, toggleSidebar,
+    boot, doLogin, doLogout, refresh, setView, toggleSidebar, toggleCollapse, globalSearch,
     openOrder, closeDetail, markDone, quickDone, saveCourier, saveOrderEdit,
     renderKanban, renderFmsSheet
   };
