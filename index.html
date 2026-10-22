@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <meta name="theme-color" content="#0f1419" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#F7F4EE" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>JOOLRY Order FMS</title>
   <link rel="manifest" href="manifest.json" />
@@ -13,13 +13,13 @@
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
-  <!-- LOGIN — TaskApp style -->
   <div id="login-screen" class="screen login-screen">
     <div class="login-bg"></div>
     <div class="login-card">
-      <div class="login-brand">JOOLRY</div>
+      <img class="login-logo" src="https://joolry.in/cdn/shop/files/Joolry_Logo_160x.png?v=1661766461" alt="JOOLRY"
+        onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />
+      <div class="login-brand" style="display:none">JOOLRY</div>
       <p class="login-sub">Order Flow Monitoring</p>
-      <p class="login-tag">JOOLRY</p>
       <label class="field-label">EMAIL ADDRESS</label>
       <div class="input-wrap">
         <span class="input-ico">✉</span>
@@ -32,24 +32,25 @@
       </div>
       <button id="login-btn" class="btn primary full login-btn" onclick="App.doLogin()">→ Sign In</button>
       <p id="login-error" class="error-text"></p>
-      <p class="login-foot">JOOLRY Order FMS · v2.8</p>
+      <p class="login-foot">JOOLRY Order FMS · v2.9</p>
     </div>
   </div>
 
-  <!-- APP SHELL -->
   <div id="app-screen" class="app-shell" style="display:none">
     <div id="global-loading" class="global-loading" style="display:none">Syncing…</div>
 
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-mark">J</div>
+        <img class="sidebar-logo-img" src="https://joolry.in/cdn/shop/files/Joolry_Logo_160x.png?v=1661766461" alt="J"
+          onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+        <div class="brand-mark" style="display:none">J</div>
         <div class="brand-text">
           <div class="sidebar-title">JOOLRY</div>
           <div class="sidebar-sub">Order FMS</div>
         </div>
       </div>
 
-      <div class="sidebar-user" id="sidebar-user">
+      <div class="sidebar-user">
         <div class="avatar" id="user-avatar">—</div>
         <div class="user-meta">
           <div class="u-name" id="user-name">—</div>
@@ -59,57 +60,50 @@
 
       <nav class="sidebar-nav" id="nav-tabs">
         <div class="nav-section">MAIN</div>
-        <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')">
-          <span class="nav-icon">▣</span><span class="nav-label">Dashboard</span>
-        </button>
+        <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')"><span class="nav-icon">▣</span><span class="nav-label">Dashboard</span></button>
+        <button class="nav-btn" data-view="insights" onclick="App.setView('insights')"><span class="nav-icon">◎</span><span class="nav-label">Insights</span></button>
 
         <div class="nav-section">WORK</div>
-        <button class="nav-btn" data-view="mywork" onclick="App.setView('mywork')">
-          <span class="nav-icon">☰</span><span class="nav-label">Pending Works</span>
-        </button>
-        <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')">
-          <span class="nav-icon">▥</span><span class="nav-label">By Stages</span>
-        </button>
-        <button class="nav-btn" data-view="late" onclick="App.setView('late')">
-          <span class="nav-icon">⚠</span><span class="nav-label">Late Orders</span>
-        </button>
+        <button class="nav-btn" data-view="mywork" onclick="App.setView('mywork')"><span class="nav-icon">☰</span><span class="nav-label">Pending Works</span></button>
+        <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')"><span class="nav-icon">▥</span><span class="nav-label">By Stages</span></button>
+        <button class="nav-btn" data-view="due" onclick="App.setView('due')"><span class="nav-icon">⏱</span><span class="nav-label">Due Today</span></button>
+        <button class="nav-btn" data-view="late" onclick="App.setView('late')"><span class="nav-icon">⚠</span><span class="nav-label">Late Orders</span></button>
 
         <div class="nav-section">ORDERS</div>
-        <button class="nav-btn" data-view="fms" onclick="App.setView('fms')">
-          <span class="nav-icon">☰</span><span class="nav-label">All Orders</span>
-        </button>
-        <button class="nav-btn" data-view="pipeline" onclick="App.setView('pipeline')">
-          <span class="nav-icon">◎</span><span class="nav-label">Value Pipeline</span>
-        </button>
+        <button class="nav-btn" data-view="fms" onclick="App.setView('fms')"><span class="nav-icon">☰</span><span class="nav-label">All Orders</span></button>
+        <button class="nav-btn" data-view="courier" onclick="App.setView('courier')"><span class="nav-icon">📦</span><span class="nav-label">Courier Board</span></button>
+        <button class="nav-btn" data-view="pipeline" onclick="App.setView('pipeline')"><span class="nav-icon">₹</span><span class="nav-label">Value Pipeline</span></button>
+        <button class="nav-btn" data-view="cities" onclick="App.setView('cities')"><span class="nav-icon">⌖</span><span class="nav-label">By City</span></button>
+        <button class="nav-btn" data-view="done" onclick="App.setView('done')"><span class="nav-icon">✓</span><span class="nav-label">Completed</span></button>
       </nav>
 
       <div class="sidebar-foot">
-        <div class="cache-line" id="cache-line">
-          <span class="cache-dot"></span>
-          <span id="cache-label">Cache: auto</span>
-        </div>
+        <div class="cache-line"><span class="cache-dot"></span><span class="cache-txt">Cache: auto</span></div>
+        <button class="theme-toggle" onclick="App.toggleTheme()" id="theme-btn" title="Toggle theme">◐ Theme</button>
         <button class="btn-link logout" onclick="App.doLogout()">← Sign Out</button>
       </div>
     </aside>
 
+    <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.toggleSidebar()"></div>
+
     <main class="main">
       <header class="topbar">
-        <button class="icon-btn collapse-btn" onclick="App.toggleCollapse()" title="Collapse sidebar">«</button>
+        <button class="icon-btn collapse-btn" onclick="App.toggleCollapse()" title="Collapse">«</button>
         <button class="icon-btn menu-btn" onclick="App.toggleSidebar()" title="Menu">☰</button>
         <div class="topbar-center">
           <div class="topbar-title" id="topbar-title">Dashboard</div>
-          <div class="topbar-crumb" id="topbar-crumb">Portal / Order FMS</div>
+          <div class="topbar-crumb" id="topbar-crumb">JOOLRY · Order FMS</div>
         </div>
         <div class="top-actions">
           <div class="top-search-wrap">
             <input id="global-search" type="search" placeholder="Search orders…" onkeydown="if(event.key==='Enter')App.globalSearch()" />
           </div>
-          <span class="auto-badge" id="auto-badge" title="Auto-refresh every 45s">● Live</span>
+          <span class="auto-badge" id="auto-badge">● Live</span>
+          <button class="icon-btn" onclick="App.toggleTheme()" title="Theme">◐</button>
           <button class="icon-btn" onclick="App.refresh()" title="Refresh" id="btn-refresh">↻</button>
         </div>
       </header>
 
-      <!-- DASHBOARD -->
       <section id="view-dashboard" class="view">
         <div class="greeting" id="greeting"></div>
         <div class="stats-row" id="stats-row"></div>
@@ -118,28 +112,30 @@
           <div class="card"><div class="card-head"><h3>Delay Overview</h3></div><div id="chart-delay" class="bar-chart"></div></div>
           <div class="card"><div class="card-head"><h3>My Workload</h3></div><div id="chart-mine" class="bar-chart"></div></div>
           <div class="card"><div class="card-head"><h3>Value by Stage (₹k)</h3></div><div id="chart-value" class="bar-chart"></div></div>
-          <div class="card wide">
-            <div class="card-head"><h3>Needs Attention</h3><button class="btn ghost sm" onclick="App.refresh()">Refresh</button></div>
-            <div id="attention-list" class="mini-list"></div>
-          </div>
-          <div class="card wide">
-            <div class="card-head"><h3>Recent Open Orders</h3></div>
-            <div id="recent-list" class="mini-list"></div>
-          </div>
+          <div class="card wide"><div class="card-head"><h3>Needs Attention</h3></div><div id="attention-list" class="mini-list"></div></div>
+          <div class="card wide"><div class="card-head"><h3>Recent Open Orders</h3></div><div id="recent-list" class="mini-list"></div></div>
         </div>
       </section>
 
-      <!-- PENDING WORKS -->
+      <section id="view-insights" class="view" style="display:none">
+        <p class="view-hint">Deep snapshot of open pipeline health.</p>
+        <div class="stats-row" id="insights-stats"></div>
+        <div class="dash-grid">
+          <div class="card"><div class="card-head"><h3>Stage mix %</h3></div><div id="insights-mix" class="bar-chart"></div></div>
+          <div class="card"><div class="card-head"><h3>Delay buckets</h3></div><div id="insights-delay" class="bar-chart"></div></div>
+          <div class="card wide"><div class="card-head"><h3>Top clients (open value)</h3></div><div id="insights-clients" class="mini-list"></div></div>
+        </div>
+      </section>
+
       <section id="view-mywork" class="view" style="display:none">
-        <p class="view-hint">Orders jahaan aapka next step pending hai.</p>
+        <p class="view-hint">Aapka next pending step.</p>
         <div id="mywork-list" class="work-list"></div>
       </section>
 
-      <!-- BY STAGES -->
       <section id="view-kanban" class="view" style="display:none">
-        <p class="view-hint">Next step tabhi unlock hoga jab previous complete ho.</p>
+        <p class="view-hint">Sequential stages — next unlocks after previous Done.</p>
         <div class="kanban-toolbar">
-          <input id="kanban-search" type="search" placeholder="Search order / client…" oninput="App.renderKanban()" />
+          <input id="kanban-search" type="search" placeholder="Search…" oninput="App.renderKanban()" />
           <select id="kanban-filter" onchange="App.renderKanban()">
             <option value="open">Open</option>
             <option value="mine">My work</option>
@@ -149,13 +145,22 @@
         <div id="kanban-board" class="kanban-board"></div>
       </section>
 
-      <!-- ALL ORDERS — enhanced -->
+      <section id="view-due" class="view" style="display:none">
+        <p class="view-hint">Orders with planned date today (or overdue planned).</p>
+        <div id="due-list" class="work-list"></div>
+      </section>
+
+      <section id="view-late" class="view" style="display:none">
+        <p class="view-hint">Positive delay.</p>
+        <div id="late-list" class="work-list"></div>
+      </section>
+
       <section id="view-fms" class="view" style="display:none">
         <div class="fms-toolbar">
-          <input id="fms-search" type="search" placeholder="Search order / client / city / shopify…" oninput="App.renderFmsSheet()" />
+          <input id="fms-search" type="search" placeholder="Search order / client / city…" oninput="App.renderFmsSheet()" />
           <select id="fms-filter" onchange="App.renderFmsSheet()">
             <option value="open">Open</option>
-            <option value="late">Late only</option>
+            <option value="late">Late</option>
             <option value="mine">My work</option>
             <option value="all">All</option>
           </select>
@@ -166,15 +171,10 @@
             <option value="box4">Client Update</option>
             <option value="box5">Shopify Status</option>
           </select>
-          <div class="fms-legend">
-            <span class="leg late">Late</span>
-            <span class="leg ok">On time</span>
-            <span class="leg pending">Pending</span>
-          </div>
         </div>
         <div class="fms-summary" id="fms-summary"></div>
         <div class="fms-wrap">
-          <table class="fms-table" id="fms-table">
+          <table class="fms-table">
             <thead>
               <tr>
                 <th class="sticky-col">Order</th>
@@ -182,7 +182,7 @@
                 <th>Value</th>
                 <th>City</th>
                 <th>Stage</th>
-                <th colspan="2" class="box-head">1. Availability</th>
+                <th colspan="2" class="box-head">1. Avail</th>
                 <th colspan="2" class="box-head">2. Pack</th>
                 <th colspan="2" class="box-head">3. Client</th>
                 <th colspan="2" class="box-head">4. Shopify</th>
@@ -190,11 +190,8 @@
               </tr>
               <tr class="sub-head">
                 <th class="sticky-col"></th><th></th><th></th><th></th><th></th>
-                <th>Pln</th><th>Act</th>
-                <th>Pln</th><th>Act</th>
-                <th>Pln</th><th>Act</th>
-                <th>Pln</th><th>Act</th>
-                <th></th>
+                <th>Pln</th><th>Act</th><th>Pln</th><th>Act</th>
+                <th>Pln</th><th>Act</th><th>Pln</th><th>Act</th><th></th>
               </tr>
             </thead>
             <tbody id="fms-body"></tbody>
@@ -202,29 +199,30 @@
         </div>
       </section>
 
-      <!-- LATE -->
-      <section id="view-late" class="view" style="display:none">
-        <p class="view-hint">Positive delay (office hours).</p>
-        <div id="late-list" class="work-list"></div>
+      <section id="view-courier" class="view" style="display:none">
+        <p class="view-hint">Courier / AWB status across open orders.</p>
+        <div class="stats-row" id="courier-stats"></div>
+        <div id="courier-list" class="work-list" style="max-width:none;margin-top:14px"></div>
       </section>
 
-      <!-- VALUE PIPELINE -->
       <section id="view-pipeline" class="view" style="display:none">
-        <p class="view-hint">Open order value sitting in each stage.</p>
         <div class="stats-row" id="pipeline-stats"></div>
-        <div class="card" style="margin-top:14px">
-          <div class="card-head"><h3>Value distribution</h3></div>
-          <div id="pipeline-chart" class="bar-chart"></div>
-        </div>
-        <div class="card wide" style="margin-top:14px">
-          <div class="card-head"><h3>High value open orders</h3></div>
-          <div id="pipeline-list" class="mini-list"></div>
-        </div>
+        <div class="card" style="margin-top:14px"><div class="card-head"><h3>Value distribution (₹k)</h3></div><div id="pipeline-chart" class="bar-chart"></div></div>
+        <div class="card wide" style="margin-top:14px"><div class="card-head"><h3>High value open</h3></div><div id="pipeline-list" class="mini-list"></div></div>
+      </section>
+
+      <section id="view-cities" class="view" style="display:none">
+        <p class="view-hint">Open orders grouped by city.</p>
+        <div id="cities-list" class="cities-grid"></div>
+      </section>
+
+      <section id="view-done" class="view" style="display:none">
+        <p class="view-hint">Recently completed / closed orders.</p>
+        <div id="done-list" class="work-list"></div>
       </section>
     </main>
   </div>
 
-  <!-- DETAIL DRAWER -->
   <div id="detail-overlay" class="overlay" onclick="App.closeDetail()"></div>
   <aside id="detail-panel" class="drawer">
     <div class="drawer-head">
@@ -258,10 +256,7 @@
       <div class="form-grid">
         <input id="d-courier" placeholder="Courier" />
         <input id="d-awb" placeholder="AWB / Tracking" />
-        <select id="d-auto">
-          <option value="No">Auto-Update: No</option>
-          <option value="Yes">Auto-Update: Yes</option>
-        </select>
+        <select id="d-auto"><option value="No">Auto-Update: No</option><option value="Yes">Auto-Update: Yes</option></select>
         <button id="btn-save-courier" class="btn primary" onclick="App.saveCourier()">Save courier</button>
       </div>
     </div>
