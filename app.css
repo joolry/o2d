@@ -170,3 +170,8 @@ h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: v
   .nav-tabs { order: 3; width: 100%; }
   .topbar { gap: 8px; }
 }
+
+/* v2.5 strict access extras */
+.fms-table tr.row-mine td.sticky-col { background: #faf6e8; }
+.fms-table tr.row-mine:hover td.sticky-col { background: var(--gold-soft); }
+.badge.gold { background: var(--gold-soft); color: #7a6210; }
