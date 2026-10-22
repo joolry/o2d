@@ -36,16 +36,16 @@
       </div>
       <nav class="nav-tabs" id="nav-tabs">
         <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')">Dashboard</button>
+        <button class="nav-btn" data-view="fms" onclick="App.setView('fms')">FMS Sheet</button>
         <button class="nav-btn" data-view="mywork" data-need="ops" onclick="App.setView('mywork')">My Work</button>
         <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')">Kanban</button>
-        <button class="nav-btn" data-view="table" onclick="App.setView('table')">Orders</button>
-        <button class="nav-btn" data-view="analytics" data-need="ops" onclick="App.setView('analytics')">Analytics</button>
+        <button class="nav-btn" data-view="late" onclick="App.setView('late')">Late</button>
         <button class="nav-btn" data-view="manual" data-need="ops" onclick="App.setView('manual')">+ Order</button>
         <button class="nav-btn" data-view="activity" data-need="admin" onclick="App.setView('activity')">Activity</button>
         <button class="nav-btn" data-view="admin" data-need="admin" onclick="App.setView('admin')">Admin</button>
       </nav>
       <div class="top-actions">
-        <button id="btn-refresh" class="btn ghost sm" onclick="App.refresh()">↻ Refresh</button>
+        <button id="btn-refresh" class="btn ghost sm" onclick="App.refresh()">↻</button>
         <div class="user-chip">
           <span id="user-name">—</span>
           <small id="user-role"></small>
@@ -54,70 +54,91 @@
       </div>
     </header>
 
+    <!-- DASHBOARD -->
     <section id="view-dashboard" class="view">
       <div class="stats-row" id="stats-row"></div>
       <div class="dash-grid">
         <div class="card"><h3>Orders by stage</h3><div id="chart-stages" class="bar-chart"></div></div>
         <div class="card"><h3>Delay overview</h3><div id="chart-delay" class="bar-chart"></div></div>
-        <div class="card"><h3>Payment mode</h3><div id="chart-pay" class="bar-chart"></div></div>
-        <div class="card"><h3>Top cities</h3><div id="chart-city" class="bar-chart"></div></div>
         <div class="card wide">
-          <div class="card-head"><h3>Needs attention (late)</h3>
-            <button class="btn ghost sm" onclick="App.refresh()">Refresh</button></div>
+          <div class="card-head"><h3>Needs attention</h3><button class="btn ghost sm" onclick="App.refresh()">Refresh</button></div>
           <div id="attention-list" class="mini-list"></div>
         </div>
       </div>
     </section>
 
-    <section id="view-mywork" class="view" style="display:none">
-      <p class="view-hint">Orders where your next action is pending (based on Allowed Boxes).</p>
-      <div id="mywork-list" class="work-list"></div>
-    </section>
-
-    <section id="view-kanban" class="view" style="display:none">
-      <div class="kanban-toolbar">
-        <input id="kanban-search" type="search" placeholder="Search order / client / Shopify #…" oninput="App.renderKanban()" />
-        <select id="kanban-filter" onchange="App.renderKanban()">
-          <option value="open">Open only</option>
-          <option value="mine">My work</option>
-          <option value="all">All orders</option>
-        </select>
-      </div>
-      <div id="kanban-board" class="kanban-board"></div>
-    </section>
-
-    <section id="view-table" class="view" style="display:none">
-      <div class="table-toolbar">
-        <input id="table-search" type="search" placeholder="Search…" oninput="App.renderTable()" />
-        <select id="table-filter" onchange="App.renderTable()">
+    <!-- FMS SHEET (classic Pln / Act grid) -->
+    <section id="view-fms" class="view" style="display:none">
+      <div class="fms-toolbar">
+        <input id="fms-search" type="search" placeholder="Search order / client / city…" oninput="App.renderFmsSheet()" />
+        <select id="fms-filter" onchange="App.renderFmsSheet()">
           <option value="open">Open</option>
           <option value="late">Late only</option>
           <option value="mine">My work</option>
           <option value="all">All</option>
         </select>
-        <button class="btn ghost sm" onclick="App.refresh()">↻</button>
+        <div class="fms-legend">
+          <span class="leg late">Late</span>
+          <span class="leg ok">On time</span>
+          <span class="leg pending">Pending</span>
+        </div>
       </div>
-      <div class="table-wrap">
-        <table class="data-table">
+      <div class="fms-wrap">
+        <table class="fms-table" id="fms-table">
           <thead>
-            <tr><th>Order</th><th>Client</th><th>Value</th><th>City</th><th>Stage</th><th>Status</th><th>Delay</th></tr>
+            <tr>
+              <th class="sticky-col">Order</th>
+              <th>Client</th>
+              <th>Value</th>
+              <th>City</th>
+              <th colspan="2" class="box-head">Box 2 · Availability</th>
+              <th colspan="2" class="box-head">Box 3 · Pack &amp; Dispatch</th>
+              <th colspan="2" class="box-head">Box 4 · Client Update</th>
+              <th colspan="2" class="box-head">Box 5 · Shopify</th>
+              <th>Status</th>
+            </tr>
+            <tr class="sub-head">
+              <th class="sticky-col"></th><th></th><th></th><th></th>
+              <th>Pln</th><th>Act</th>
+              <th>Pln</th><th>Act</th>
+              <th>Pln</th><th>Act</th>
+              <th>Pln</th><th>Act</th>
+              <th></th>
+            </tr>
           </thead>
-          <tbody id="table-body"></tbody>
+          <tbody id="fms-body"></tbody>
         </table>
       </div>
     </section>
 
-    <section id="view-analytics" class="view" style="display:none">
-      <div class="stats-row" id="analytics-stats"></div>
-      <div class="dash-grid">
-        <div class="card"><h3>Pipeline count</h3><div id="an-pipeline" class="bar-chart"></div></div>
-        <div class="card"><h3>Value by stage (₹)</h3><div id="an-value" class="bar-chart"></div></div>
-        <div class="card wide"><h3>Boxes marked Done</h3><div id="an-done" class="bar-chart"></div></div>
-      </div>
+    <!-- MY WORK -->
+    <section id="view-mywork" class="view" style="display:none">
+      <p class="view-hint">Orders where your next box is pending (Allowed Boxes).</p>
+      <div id="mywork-list" class="work-list"></div>
     </section>
 
+    <!-- KANBAN -->
+    <section id="view-kanban" class="view" style="display:none">
+      <div class="kanban-toolbar">
+        <input id="kanban-search" type="search" placeholder="Search…" oninput="App.renderKanban()" />
+        <select id="kanban-filter" onchange="App.renderKanban()">
+          <option value="open">Open</option>
+          <option value="mine">My work</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <div id="kanban-board" class="kanban-board"></div>
+    </section>
+
+    <!-- LATE -->
+    <section id="view-late" class="view" style="display:none">
+      <p class="view-hint">Orders with positive delay (office hours late).</p>
+      <div id="late-list" class="work-list"></div>
+    </section>
+
+    <!-- MANUAL ORDER -->
     <section id="view-manual" class="view" style="display:none">
-      <p class="view-hint">Create a manual order (email / WhatsApp / phone). Admin & Ops only.</p>
+      <p class="view-hint">Manual order (email / WhatsApp / phone). Admin &amp; Ops only.</p>
       <div class="card" style="max-width:520px">
         <div class="form-grid">
           <input id="m-client" placeholder="Client name *" />
@@ -127,11 +148,7 @@
           <input id="m-pincode" placeholder="Pincode" />
           <input id="m-address" placeholder="Full address" />
           <input id="m-value" placeholder="Order value (INR)" type="number" />
-          <select id="m-pay">
-            <option value="Prepaid">Prepaid</option>
-            <option value="COD">COD</option>
-            <option value="Partial">Partial</option>
-          </select>
+          <select id="m-pay"><option value="Prepaid">Prepaid</option><option value="COD">COD</option><option value="Partial">Partial</option></select>
           <input id="m-notes" placeholder="Notes" />
           <input id="m-product" placeholder="Product / SKU (optional)" />
           <input id="m-qty" placeholder="Qty" type="number" value="1" />
@@ -140,27 +157,28 @@
       </div>
     </section>
 
+    <!-- ACTIVITY -->
     <section id="view-activity" class="view" style="display:none">
-      <p class="view-hint">Recent activity log (Admin only).</p>
+      <p class="view-hint">Activity log — Admin only.</p>
       <div class="table-wrap">
         <table class="data-table">
-          <thead>
-            <tr><th>Time</th><th>User</th><th>Action</th><th>Order</th><th>Box</th><th>Details</th></tr>
-          </thead>
+          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Order</th><th>Box</th><th>Details</th></tr></thead>
           <tbody id="activity-body"></tbody>
         </table>
       </div>
     </section>
 
+    <!-- ADMIN -->
     <section id="view-admin" class="view" style="display:none">
-      <p class="view-hint">Admin only. Users & Allowed Boxes are managed in Google Sheet → Users tab (col H = Allowed Boxes).</p>
+      <p class="view-hint">Admin. Users &amp; Allowed Boxes → Google Sheet → Users (col H).</p>
       <div class="dash-grid">
-        <div class="card"><h3>Session & permissions</h3><div id="admin-users" class="mini-list"></div></div>
-        <div class="card"><h3>Open orders (quick)</h3><div id="admin-orders" class="mini-list"></div></div>
+        <div class="card"><h3>Session</h3><div id="admin-users" class="mini-list"></div></div>
+        <div class="card"><h3>Open orders</h3><div id="admin-orders" class="mini-list"></div></div>
       </div>
     </section>
   </div>
 
+  <!-- DETAIL DRAWER -->
   <div id="detail-overlay" class="overlay" onclick="App.closeDetail()"></div>
   <aside id="detail-panel" class="drawer">
     <div class="drawer-head">
@@ -183,7 +201,7 @@
             <option value="Closed">Closed</option>
             <option value="Done">Done</option>
           </select>
-          <button class="btn primary" onclick="App.saveOrderEdit()">Save changes</button>
+          <button class="btn primary" onclick="App.saveOrderEdit()">Save</button>
         </div>
       </div>
       <h3>Line items</h3>
@@ -194,10 +212,7 @@
       <div class="form-grid">
         <input id="d-courier" placeholder="Courier" />
         <input id="d-awb" placeholder="AWB / Tracking" />
-        <select id="d-auto">
-          <option value="No">Auto-Update: No</option>
-          <option value="Yes">Auto-Update: Yes</option>
-        </select>
+        <select id="d-auto"><option value="No">Auto-Update: No</option><option value="Yes">Auto-Update: Yes</option></select>
         <button id="btn-save-courier" class="btn primary" onclick="App.saveCourier()">Save courier</button>
       </div>
     </div>
@@ -207,10 +222,6 @@
   <script src="appconfig.js"></script>
   <script src="core.js"></script>
   <script src="app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(function () {});
-    }
-  </script>
+  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});</script>
 </body>
 </html>
