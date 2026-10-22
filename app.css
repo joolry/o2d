@@ -450,3 +450,40 @@ body {
 @media (max-width: 380px) {
   .stats-row { grid-template-columns: 1fr; }
 }
+
+/* Premium SVG nav icons */
+.nav-svg {
+  width: 18px; height: 18px; display: block;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.nav-icon {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.nav-btn.active .nav-svg { stroke: currentColor; }
+
+/* Slightly tighter premium density */
+.stat-card .value { font-variant-numeric: tabular-nums; }
+.card, .stat-card, .work-card, .k-card, .city-card {
+  transition: border-color .15s, box-shadow .15s;
+}
+.work-card:hover, .k-card:hover, .city-card:hover {
+  box-shadow: 0 8px 28px rgba(18,20,26,.08);
+}
+[data-theme="dark"] .work-card:hover,
+[data-theme="dark"] .k-card:hover,
+[data-theme="dark"] .city-card:hover {
+  box-shadow: 0 8px 28px rgba(0,0,0,.4);
+}
+
+/* Ensure table cells don't explode layout */
+.fms-table td, .fms-table th { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.fms-table td.sticky-col { max-width: 140px; }
+
+/* Safe area for notched phones */
+@supports (padding: max(0px)) {
+  .sidebar { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .view { padding-bottom: max(28px, env(safe-area-inset-bottom)); }
+  .topbar { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+}
