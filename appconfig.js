@@ -2,7 +2,7 @@
 window.APP_CONFIG = {
   API_BASE: '',
   APP_NAME: 'JOOLRY Order FMS',
-  APP_VERSION: '2.8',
+  APP_VERSION: '2.9',
   APP_COMPANY: 'JOOLRY',
   SESSION_KEY: 'joolry_orderfms_session_v1',
   SESSION_HOURS: 12,
