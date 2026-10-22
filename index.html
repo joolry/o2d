@@ -13,7 +13,6 @@
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
-  <!-- LOGIN -->
   <div id="login-screen" class="screen login-screen">
     <div class="login-card">
       <div class="logo-wrap">
@@ -21,14 +20,13 @@
         <div id="logo-fallback" class="logo-text" style="display:none">JOOLRY</div>
       </div>
       <p class="login-sub">Order Flow Monitoring</p>
-      <input id="login-user" type="text" placeholder="Username" autocomplete="username" />
+      <input id="login-user" type="email" placeholder="Email" autocomplete="username" />
       <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
       <button id="login-btn" class="btn primary full" onclick="App.doLogin()">Sign in</button>
       <p id="login-error" class="error-text"></p>
     </div>
   </div>
 
-  <!-- APP SHELL -->
   <div id="app-screen" class="screen app-screen" style="display:none">
     <div id="global-loading" class="global-loading" style="display:none">Loading…</div>
     <header class="topbar">
@@ -36,16 +34,18 @@
         <span class="brand-name">JOOLRY</span>
         <span class="brand-tag">Order FMS</span>
       </div>
-      <nav class="nav-tabs">
+      <nav class="nav-tabs" id="nav-tabs">
         <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')">Dashboard</button>
-        <button class="nav-btn" data-view="mywork" onclick="App.setView('mywork')">My Work</button>
+        <button class="nav-btn" data-view="mywork" data-need="ops" onclick="App.setView('mywork')">My Work</button>
         <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')">Kanban</button>
         <button class="nav-btn" data-view="table" onclick="App.setView('table')">Orders</button>
-        <button class="nav-btn" data-view="analytics" onclick="App.setView('analytics')">Analytics</button>
-        <button class="nav-btn admin-only" data-view="admin" onclick="App.setView('admin')" style="display:none">Admin</button>
+        <button class="nav-btn" data-view="analytics" data-need="ops" onclick="App.setView('analytics')">Analytics</button>
+        <button class="nav-btn" data-view="manual" data-need="ops" onclick="App.setView('manual')">+ Order</button>
+        <button class="nav-btn" data-view="activity" data-need="admin" onclick="App.setView('activity')">Activity</button>
+        <button class="nav-btn" data-view="admin" data-need="admin" onclick="App.setView('admin')">Admin</button>
       </nav>
       <div class="top-actions">
-        <button id="btn-refresh" class="btn ghost sm" onclick="App.refresh()" title="Refresh">↻ Refresh</button>
+        <button id="btn-refresh" class="btn ghost sm" onclick="App.refresh()">↻ Refresh</button>
         <div class="user-chip">
           <span id="user-name">—</span>
           <small id="user-role"></small>
@@ -54,43 +54,26 @@
       </div>
     </header>
 
-    <!-- DASHBOARD -->
     <section id="view-dashboard" class="view">
       <div class="stats-row" id="stats-row"></div>
       <div class="dash-grid">
-        <div class="card">
-          <h3>Orders by stage</h3>
-          <div id="chart-stages" class="bar-chart"></div>
-        </div>
-        <div class="card">
-          <h3>Delay overview</h3>
-          <div id="chart-delay" class="bar-chart"></div>
-        </div>
-        <div class="card">
-          <h3>Payment mode</h3>
-          <div id="chart-pay" class="bar-chart"></div>
-        </div>
-        <div class="card">
-          <h3>Top cities</h3>
-          <div id="chart-city" class="bar-chart"></div>
-        </div>
+        <div class="card"><h3>Orders by stage</h3><div id="chart-stages" class="bar-chart"></div></div>
+        <div class="card"><h3>Delay overview</h3><div id="chart-delay" class="bar-chart"></div></div>
+        <div class="card"><h3>Payment mode</h3><div id="chart-pay" class="bar-chart"></div></div>
+        <div class="card"><h3>Top cities</h3><div id="chart-city" class="bar-chart"></div></div>
         <div class="card wide">
-          <div class="card-head">
-            <h3>Needs attention (late)</h3>
-            <button class="btn ghost sm" onclick="App.refresh()">Refresh</button>
-          </div>
+          <div class="card-head"><h3>Needs attention (late)</h3>
+            <button class="btn ghost sm" onclick="App.refresh()">Refresh</button></div>
           <div id="attention-list" class="mini-list"></div>
         </div>
       </div>
     </section>
 
-    <!-- MY WORK -->
     <section id="view-mywork" class="view" style="display:none">
-      <p class="view-hint">Orders where your next action is pending. Only boxes you are allowed to complete appear here.</p>
+      <p class="view-hint">Orders where your next action is pending (based on Allowed Boxes).</p>
       <div id="mywork-list" class="work-list"></div>
     </section>
 
-    <!-- KANBAN -->
     <section id="view-kanban" class="view" style="display:none">
       <div class="kanban-toolbar">
         <input id="kanban-search" type="search" placeholder="Search order / client / Shopify #…" oninput="App.renderKanban()" />
@@ -103,7 +86,6 @@
       <div id="kanban-board" class="kanban-board"></div>
     </section>
 
-    <!-- TABLE -->
     <section id="view-table" class="view" style="display:none">
       <div class="table-toolbar">
         <input id="table-search" type="search" placeholder="Search…" oninput="App.renderTable()" />
@@ -118,57 +100,67 @@
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr>
-              <th>Order</th>
-              <th>Client</th>
-              <th>Value</th>
-              <th>City</th>
-              <th>Stage</th>
-              <th>Status</th>
-              <th>Delay</th>
-            </tr>
+            <tr><th>Order</th><th>Client</th><th>Value</th><th>City</th><th>Stage</th><th>Status</th><th>Delay</th></tr>
           </thead>
           <tbody id="table-body"></tbody>
         </table>
       </div>
     </section>
 
-    <!-- ANALYTICS -->
     <section id="view-analytics" class="view" style="display:none">
       <div class="stats-row" id="analytics-stats"></div>
       <div class="dash-grid">
-        <div class="card">
-          <h3>Pipeline count</h3>
-          <div id="an-pipeline" class="bar-chart"></div>
-        </div>
-        <div class="card">
-          <h3>Value by stage (₹)</h3>
-          <div id="an-value" class="bar-chart"></div>
-        </div>
-        <div class="card wide">
-          <h3>Boxes marked Done (lifetime in data)</h3>
-          <div id="an-done" class="bar-chart"></div>
+        <div class="card"><h3>Pipeline count</h3><div id="an-pipeline" class="bar-chart"></div></div>
+        <div class="card"><h3>Value by stage (₹)</h3><div id="an-value" class="bar-chart"></div></div>
+        <div class="card wide"><h3>Boxes marked Done</h3><div id="an-done" class="bar-chart"></div></div>
+      </div>
+    </section>
+
+    <section id="view-manual" class="view" style="display:none">
+      <p class="view-hint">Create a manual order (email / WhatsApp / phone). Admin & Ops only.</p>
+      <div class="card" style="max-width:520px">
+        <div class="form-grid">
+          <input id="m-client" placeholder="Client name *" />
+          <input id="m-phone" placeholder="Phone" />
+          <input id="m-email" placeholder="Email" type="email" />
+          <input id="m-city" placeholder="City" />
+          <input id="m-pincode" placeholder="Pincode" />
+          <input id="m-address" placeholder="Full address" />
+          <input id="m-value" placeholder="Order value (INR)" type="number" />
+          <select id="m-pay">
+            <option value="Prepaid">Prepaid</option>
+            <option value="COD">COD</option>
+            <option value="Partial">Partial</option>
+          </select>
+          <input id="m-notes" placeholder="Notes" />
+          <input id="m-product" placeholder="Product / SKU (optional)" />
+          <input id="m-qty" placeholder="Qty" type="number" value="1" />
+          <button class="btn primary" onclick="App.createManualOrder()">Create Order</button>
         </div>
       </div>
     </section>
 
-    <!-- ADMIN -->
-    <section id="view-admin" class="view admin-only" style="display:none">
-      <p class="view-hint">Admin only. Users & roles are managed in the Google Sheet → Users tab. Allowed boxes come from Steps → Allowed Usernames.</p>
+    <section id="view-activity" class="view" style="display:none">
+      <p class="view-hint">Recent activity log (Admin only).</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Time</th><th>User</th><th>Action</th><th>Order</th><th>Box</th><th>Details</th></tr>
+          </thead>
+          <tbody id="activity-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-admin" class="view" style="display:none">
+      <p class="view-hint">Admin only. Users & Allowed Boxes are managed in Google Sheet → Users tab (col H = Allowed Boxes).</p>
       <div class="dash-grid">
-        <div class="card">
-          <h3>Session & permissions</h3>
-          <div id="admin-users" class="mini-list"></div>
-        </div>
-        <div class="card">
-          <h3>Open orders (quick)</h3>
-          <div id="admin-orders" class="mini-list"></div>
-        </div>
+        <div class="card"><h3>Session & permissions</h3><div id="admin-users" class="mini-list"></div></div>
+        <div class="card"><h3>Open orders (quick)</h3><div id="admin-orders" class="mini-list"></div></div>
       </div>
     </section>
   </div>
 
-  <!-- DETAIL DRAWER -->
   <div id="detail-overlay" class="overlay" onclick="App.closeDetail()"></div>
   <aside id="detail-panel" class="drawer">
     <div class="drawer-head">
@@ -177,8 +169,6 @@
     </div>
     <div class="drawer-body">
       <div class="info-grid" id="d-info"></div>
-
-      <!-- Admin edit block -->
       <div id="d-admin-edit" style="display:none">
         <h3>Admin edit</h3>
         <div class="form-grid">
@@ -196,13 +186,10 @@
           <button class="btn primary" onclick="App.saveOrderEdit()">Save changes</button>
         </div>
       </div>
-
       <h3>Line items</h3>
       <div id="d-items" class="items-box"></div>
-
       <h3>Boxes</h3>
       <div id="d-boxes"></div>
-
       <h3>Courier</h3>
       <div class="form-grid">
         <input id="d-courier" placeholder="Courier" />
@@ -217,7 +204,6 @@
   </aside>
 
   <div id="toast" class="toast"></div>
-
   <script src="appconfig.js"></script>
   <script src="core.js"></script>
   <script src="app.js"></script>
