@@ -270,3 +270,22 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: v
   .nav-tabs { order: 3; width: 100%; }
   .topbar { gap: 10px; }
 }
+
+/* v2.1 extras */
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-logo { height: 28px; width: auto; filter: brightness(0) invert(1); }
+.global-loading {
+  background: var(--gold); color: var(--ink); text-align: center;
+  font-size: 12px; font-weight: 600; padding: 6px; letter-spacing: .04em;
+}
+.view-hint { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+.work-list { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
+.work-card {
+  background: var(--card); border-radius: var(--radius); padding: 14px 16px;
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+}
+.work-card.late { border-left: 3px solid var(--late); }
+.work-main { flex: 1; cursor: pointer; min-width: 180px; }
+.muted { color: var(--muted); font-weight: 400; }
+.admin-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
