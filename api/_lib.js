@@ -10,7 +10,7 @@ const ALLOWED = new Set([
   'login', 'validateSession',
   'getBootData', 'getOrders', 'getOrderDetail',
   'getSteps', 'getConfig', 'getSnapshot',
-  'markBoxDone', 'updateCourier',
+  'markBoxDone', 'updateCourier', 'updateOrder',
   'syncFromShopify', 'clientForceSync'
 ]);
 
@@ -216,6 +216,10 @@ async function handle(fn, args, token, meta) {
   }
 
   // Live GAS (or cache wrap)
+  // Writes: prepend Vercel-verified user so GAS doesn't need its own token format
+  if (user && !isRead(fn)) {
+    args = [user.username, user.role || 'Ops', user.name || user.username].concat(args);
+  }
   const t0 = Date.now();
   const loader = () => callGas(fn, args, true);
   let out;
