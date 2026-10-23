@@ -61,7 +61,6 @@
       <nav class="sidebar-nav" id="nav-tabs">
         <div class="nav-section">MAIN</div>
         <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span><span class="nav-label">Dashboard</span></button>
-        <button class="nav-btn" data-view="insights" onclick="App.setView('insights')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg></span><span class="nav-label">Insights</span></button>
 
         <div class="nav-section">WORK</div>
         <button class="nav-btn" data-view="mywork" onclick="App.setView('mywork')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="nav-label">Pending Works</span></button>
@@ -71,10 +70,6 @@
 
         <div class="nav-section">ORDERS</div>
         <button class="nav-btn" data-view="fms" onclick="App.setView('fms')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span><span class="nav-label">All Orders</span></button>
-        <button class="nav-btn" data-view="courier" onclick="App.setView('courier')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M21 3l-7 7M3 12a9 9 0 0015 6.7L21 21"/><path d="M12 8v4l2 2"/></svg></span><span class="nav-label">Courier Board</span></button>
-        <button class="nav-btn" data-view="pipeline" onclick="App.setView('pipeline')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span><span class="nav-label">Value Pipeline</span></button>
-        <button class="nav-btn" data-view="cities" onclick="App.setView('cities')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></span><span class="nav-label">By City</span></button>
-        <button class="nav-btn" data-view="done" onclick="App.setView('done')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg></span><span class="nav-label">Completed</span></button>
       </nav>
 
       <div class="sidebar-foot">
@@ -114,16 +109,6 @@
           <div class="card"><div class="card-head"><h3>Value by Stage (₹k)</h3></div><div id="chart-value" class="bar-chart"></div></div>
           <div class="card wide"><div class="card-head"><h3>Needs Attention</h3></div><div id="attention-list" class="mini-list"></div></div>
           <div class="card wide"><div class="card-head"><h3>Recent Open Orders</h3></div><div id="recent-list" class="mini-list"></div></div>
-        </div>
-      </section>
-
-      <section id="view-insights" class="view" style="display:none">
-        <p class="view-hint">Deep snapshot of open pipeline health.</p>
-        <div class="stats-row" id="insights-stats"></div>
-        <div class="dash-grid">
-          <div class="card"><div class="card-head"><h3>Stage mix %</h3></div><div id="insights-mix" class="bar-chart"></div></div>
-          <div class="card"><div class="card-head"><h3>Delay buckets</h3></div><div id="insights-delay" class="bar-chart"></div></div>
-          <div class="card wide"><div class="card-head"><h3>Top clients (open value)</h3></div><div id="insights-clients" class="mini-list"></div></div>
         </div>
       </section>
 
@@ -198,28 +183,6 @@
           </table>
         </div>
       </section>
-
-      <section id="view-courier" class="view" style="display:none">
-        <p class="view-hint">Courier / AWB status across open orders.</p>
-        <div class="stats-row" id="courier-stats"></div>
-        <div id="courier-list" class="work-list" style="max-width:none;margin-top:14px"></div>
-      </section>
-
-      <section id="view-pipeline" class="view" style="display:none">
-        <div class="stats-row" id="pipeline-stats"></div>
-        <div class="card" style="margin-top:14px"><div class="card-head"><h3>Value distribution (₹k)</h3></div><div id="pipeline-chart" class="bar-chart"></div></div>
-        <div class="card wide" style="margin-top:14px"><div class="card-head"><h3>High value open</h3></div><div id="pipeline-list" class="mini-list"></div></div>
-      </section>
-
-      <section id="view-cities" class="view" style="display:none">
-        <p class="view-hint">Open orders grouped by city.</p>
-        <div id="cities-list" class="cities-grid"></div>
-      </section>
-
-      <section id="view-done" class="view" style="display:none">
-        <p class="view-hint">Recently completed / closed orders.</p>
-        <div id="done-list" class="work-list"></div>
-      </section>
     </main>
   </div>
 
@@ -254,9 +217,16 @@
       <div id="d-boxes"></div>
       <h3>Courier / Tracking</h3>
       <div class="form-grid">
-        <input id="d-courier" placeholder="Courier" />
+        <select id="d-courier" onchange="App.onCourierChange()">
+          <option value="">— Select Courier —</option>
+          <option value="Shree Maruti">Shree Maruti</option>
+          <option value="Blue Dart Express">Blue Dart Express</option>
+        </select>
         <input id="d-awb" placeholder="AWB / Tracking" />
-        <select id="d-auto"><option value="No">Auto-Update: No</option><option value="Yes">Auto-Update: Yes</option></select>
+        <select id="d-auto">
+          <option value="No">Auto-Update: No</option>
+          <option value="Yes">Auto-Update: Yes</option>
+        </select>
         <button id="btn-save-courier" class="btn primary" onclick="App.saveCourier()">Save courier</button>
       </div>
     </div>
