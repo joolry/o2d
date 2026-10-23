@@ -166,16 +166,11 @@
   function applyNavAccess() {
     const show = {
       dashboard: true,
-      insights: true,
       mywork: hasAnyBox() && !isViewer(),
       kanban: true,
       due: true,
       late: true,
-      fms: true,
-      courier: true,
-      pipeline: true,
-      cities: true,
-      done: true
+      fms: true
     };
     $$('.nav-btn').forEach(btn => {
       const v = btn.dataset.view;
@@ -251,16 +246,11 @@
   function renderCurrentView() {
     const v = state.view || 'dashboard';
     if (v === 'dashboard') renderDashboard();
-    else if (v === 'insights') renderInsights();
     else if (v === 'mywork') renderMyWork();
     else if (v === 'kanban') renderKanban();
     else if (v === 'due') renderDue();
     else if (v === 'late') renderLate();
     else if (v === 'fms') renderFmsSheet();
-    else if (v === 'courier') renderCourier();
-    else if (v === 'pipeline') renderPipeline();
-    else if (v === 'cities') renderCities();
-    else if (v === 'done') renderDone();
   }
   function renderAll() {
     renderCurrentView();
@@ -270,7 +260,7 @@
     if (v === 'mywork' && (isViewer() || !hasAnyBox())) { toast('No tasks for you', 'error'); return; }
     state.view = v;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-    ['dashboard','insights','mywork','kanban','due','late','fms','courier','pipeline','cities','done'].forEach(id => {
+    ['dashboard','mywork','kanban','due','late','fms'].forEach(id => {
       const el = $('#view-' + id);
       if (el) el.style.display = id === v ? 'block' : 'none';
     });
@@ -293,12 +283,7 @@
       renderKanban();
     }
     if (v === 'dashboard') renderDashboard();
-    if (v === 'pipeline') renderPipeline();
-    if (v === 'insights') renderInsights();
     if (v === 'due') renderDue();
-    if (v === 'courier') renderCourier();
-    if (v === 'cities') renderCities();
-    if (v === 'done') renderDone();
   }
 
   function isOpen(o) {
@@ -798,23 +783,55 @@
     const showCourier = canCourier();
     const courierSection = $('#btn-save-courier') && $('#btn-save-courier').closest('.form-grid');
     if (showCourier) {
-      $('#d-courier').value = o.courier || '';
+      const cVal = o.courier || '';
+      const sel = $('#d-courier');
+      if (sel) {
+        // match known options or leave blank
+        const known = ['Shree Maruti', 'Blue Dart Express'];
+        sel.value = known.indexOf(cVal) >= 0 ? cVal : (cVal ? cVal : '');
+        // if unknown courier stored, add temporary option
+        if (cVal && known.indexOf(cVal) < 0) {
+          let opt = Array.from(sel.options).find(o => o.value === cVal);
+          if (!opt) {
+            opt = document.createElement('option');
+            opt.value = cVal; opt.textContent = cVal;
+            sel.appendChild(opt);
+          }
+          sel.value = cVal;
+        }
+      }
       $('#d-awb').value = o.awb || '';
       $('#d-auto').value = String(o.courierAutoUpdate || '').toLowerCase() === 'yes' ? 'Yes' : 'No';
-      $('#d-courier').disabled = false;
+      if (sel) sel.disabled = false;
       $('#d-awb').disabled = false;
-      $('#d-auto').disabled = false;
       $('#btn-save-courier').style.display = '';
+      onCourierChange();
       // show the h3 + form
       const h3s = $$('#detail-panel h3');
-      h3s.forEach(h => { if (h.textContent.trim() === 'Courier') h.style.display = ''; });
+      h3s.forEach(h => {
+        const t = h.textContent.trim();
+        if (t === 'Courier' || t.indexOf('Courier') === 0) h.style.display = '';
+      });
       if (courierSection) courierSection.style.display = '';
     } else {
-      // hide courier edit for viewer / no-box users — still show values read-only if present
-      $('#d-courier').value = o.courier || '—';
-      $('#d-awb').value = o.awb || '—';
+      // read-only for viewer / no-box users
+      const sel = $('#d-courier');
+      const cVal = o.courier || '';
+      if (sel) {
+        const known = ['Shree Maruti', 'Blue Dart Express'];
+        if (cVal && known.indexOf(cVal) < 0) {
+          let opt = Array.from(sel.options).find(o => o.value === cVal);
+          if (!opt) {
+            opt = document.createElement('option');
+            opt.value = cVal; opt.textContent = cVal;
+            sel.appendChild(opt);
+          }
+        }
+        sel.value = cVal || '';
+        sel.disabled = true;
+      }
+      $('#d-awb').value = o.awb || '';
       $('#d-auto').value = String(o.courierAutoUpdate || '').toLowerCase() === 'yes' ? 'Yes' : 'No';
-      $('#d-courier').disabled = true;
       $('#d-awb').disabled = true;
       $('#d-auto').disabled = true;
       $('#btn-save-courier').style.display = 'none';
@@ -863,13 +880,31 @@
       await refresh();
     } finally { setLoading(false); }
   }
+  function onCourierChange() {
+    const courier = ($('#d-courier') && $('#d-courier').value) || '';
+    const auto = $('#d-auto');
+    if (!auto) return;
+    if (courier === 'Shree Maruti') {
+      auto.disabled = false;
+      // keep current selection
+    } else if (courier === 'Blue Dart Express') {
+      auto.value = 'No';
+      auto.disabled = true;
+    } else {
+      auto.disabled = false;
+    }
+  }
   async function saveCourier() {
     if (!state.selected || !canCourier()) { toast('No access', 'error'); return; }
+    const courier = ($('#d-courier') && $('#d-courier').value || '').trim();
+    if (!courier) { toast('Select courier', 'error'); return; }
+    let autoVal = ($('#d-auto') && $('#d-auto').value) || 'No';
+    if (courier === 'Blue Dart Express') autoVal = 'No';
     setLoading(true);
     try {
       const res = await rpc('updateCourier', [
-        state.selected.orderId, $('#d-courier').value.trim(),
-        $('#d-awb').value.trim(), $('#d-auto').value
+        state.selected.orderId, courier,
+        $('#d-awb').value.trim(), autoVal
       ]);
       if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
       toast('Courier saved', 'ok');
@@ -1006,6 +1041,7 @@
     const late = open.filter(o => worstDelay(o) > 0);
     const val = open.reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
     const mine = open.filter(orderNeedsMyBox);
+    const noCourier = open.filter(o => !o.awb && !o.courier);
     const is = $('#insights-stats');
     if (is) {
       is.innerHTML = `
@@ -1014,16 +1050,23 @@
         <div class="stat-card gold"><div class="label">My work</div><div class="value">${mine.length}</div></div>
         <div class="stat-card ok"><div class="label">Open value</div><div class="value" style="font-size:18px">${money(val)}</div></div>`;
     }
-    const counts = { box2: 0, box3: 0, box4: 0, box5: 0, done: 0 };
-    state.orders.forEach(o => { counts[currentStage(o)]++; });
-    const total = Math.max(1, state.orders.length);
+
+    const counts = { box2: 0, box3: 0, box4: 0, box5: 0 };
+    const valBy = { box2: 0, box3: 0, box4: 0, box5: 0 };
+    open.forEach(o => {
+      const st = currentStage(o);
+      if (counts[st] !== undefined) {
+        counts[st]++;
+        valBy[st] += parseFloat(o.orderValue) || 0;
+      }
+    });
     const mix = $('#insights-mix');
     if (mix) {
       mix.innerHTML = barHtml([
-        { l: 'Avail %', v: Math.round(100 * counts.box2 / total) },
-        { l: 'Pack %', v: Math.round(100 * counts.box3 / total), c: 'gold' },
-        { l: 'Client %', v: Math.round(100 * counts.box4 / total), c: 'rose' },
-        { l: 'Shopify %', v: Math.round(100 * counts.box5 / total), c: 'ok' }
+        { l: 'Availability', v: counts.box2 },
+        { l: 'Pack', v: counts.box3, c: 'gold' },
+        { l: 'Client', v: counts.box4, c: 'rose' },
+        { l: 'Shopify', v: counts.box5, c: 'ok' }
       ]);
     }
     let ontime = 0, mild = 0, high = 0;
@@ -1039,18 +1082,74 @@
         { l: '≥ 1d late', v: high, c: 'late' }
       ]);
     }
+    const ivs = $('#insights-valstage');
+    if (ivs) {
+      ivs.innerHTML = barHtml([
+        { l: 'Avail', v: Math.round(valBy.box2 / 1000) },
+        { l: 'Pack', v: Math.round(valBy.box3 / 1000), c: 'gold' },
+        { l: 'Client', v: Math.round(valBy.box4 / 1000), c: 'rose' },
+        { l: 'Shopify', v: Math.round(valBy.box5 / 1000), c: 'ok' }
+      ]);
+    }
+    const risk = $('#insights-risk');
+    if (risk) {
+      risk.innerHTML = barHtml([
+        { l: 'Late', v: late.length, c: 'late' },
+        { l: 'No AWB', v: noCourier.length, c: 'gold' },
+        { l: 'My pending', v: mine.length },
+        { l: 'On time', v: ontime, c: 'ok' }
+      ]);
+    }
+
+    // Top clients — rich rows
     const clients = {};
     open.forEach(o => {
-      const n = o.clientName || 'Unknown';
-      if (!clients[n]) clients[n] = 0;
-      clients[n] += parseFloat(o.orderValue) || 0;
+      const n = (o.clientName || 'Unknown').trim() || 'Unknown';
+      if (!clients[n]) clients[n] = { v: 0, n: 0, cities: {}, stages: {} };
+      clients[n].v += parseFloat(o.orderValue) || 0;
+      clients[n].n += 1;
+      const city = (o.city || '—').trim() || '—';
+      clients[n].cities[city] = true;
+      const st = currentStage(o);
+      clients[n].stages[st] = (clients[n].stages[st] || 0) + 1;
     });
-    const top = Object.keys(clients).sort((a, b) => clients[b] - clients[a]).slice(0, 10);
+    const top = Object.keys(clients).sort((a, b) => clients[b].v - clients[a].v).slice(0, 12);
     const ic = $('#insights-clients');
     if (ic) {
       ic.innerHTML = top.length
-        ? top.map(n => `<div class="mini-item"><span>${esc(n)}</span><span><strong>${money(clients[n])}</strong></span></div>`).join('')
-        : '<div class="empty">No data</div>';
+        ? top.map(n => {
+            const c = clients[n];
+            const cities = Object.keys(c.cities).slice(0, 2).join(', ');
+            return `<div class="client-row">
+              <span class="cr-name" title="${esc(n)}">${esc(n)}</span>
+              <span class="cr-orders">${c.n}</span>
+              <span class="cr-city" title="${esc(cities)}">${esc(cities || '—')}</span>
+              <span class="cr-val"><strong>${money(c.v)}</strong></span>
+            </div>`;
+          }).join('')
+        : '<div class="empty">No open clients</div>';
+    }
+
+    const topOrd = open.slice().sort((a, b) => (parseFloat(b.orderValue) || 0) - (parseFloat(a.orderValue) || 0)).slice(0, 8);
+    const ito = $('#insights-toporders');
+    if (ito) {
+      ito.innerHTML = topOrd.length
+        ? topOrd.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
+            <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')} · ${esc(o.city || '')}</span>
+            <span><strong>${money(o.orderValue)}</strong> · ${esc(STAGE_LABELS[currentStage(o)] || '')}</span>
+          </div>`).join('')
+        : '<div class="empty">No open orders</div>';
+    }
+
+    const lateList = late.slice().sort((a, b) => worstDelay(b) - worstDelay(a)).slice(0, 8);
+    const il = $('#insights-late');
+    if (il) {
+      il.innerHTML = lateList.length
+        ? lateList.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
+            <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
+            <span class="badge late">+${worstDelay(o).toFixed(1)}h · ${esc(STAGE_LABELS[currentStage(o)] || '')}</span>
+          </div>`).join('')
+        : '<div class="empty">No late orders 🎉</div>';
     }
   }
 
@@ -1103,7 +1202,7 @@
   }
 
   window.App = {
-    boot, doLogin, doLogout, refresh, setView, toggleSidebar, toggleCollapse, globalSearch, toggleTheme,
+    boot, doLogin, doLogout, refresh, setView, toggleSidebar, toggleCollapse, globalSearch, toggleTheme, onCourierChange,
     openOrder, closeDetail, markDone, quickDone, saveCourier, saveOrderEdit,
     renderKanban, renderFmsSheet
   };
