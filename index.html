@@ -84,6 +84,10 @@
           <span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 4.3L2.6 18a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 4.3a2 2 0 00-3.4 0z"/></svg></span>
           <span class="nav-label">Late Orders</span>
         </button>
+        <button class="nav-btn" data-view="refund" onclick="App.setView('refund')">
+          <span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v8M8 12h8"/><circle cx="12" cy="12" r="9"/></svg></span>
+          <span class="nav-label">Refunds</span>
+        </button>
 
         <div class="nav-section">ORDERS</div>
         <button class="nav-btn" data-view="fms" onclick="App.setView('fms')">
@@ -166,7 +170,21 @@
       </section>
 
       <!-- ALL ORDERS (FMS TABLE) -->
-      <section id="view-fms" class="view" style="display:none">
+      
+      <section id="view-refund" class="view" style="display:none">
+        <div class="view-head">
+          <div>
+            <h1 class="view-title">Refunds</h1>
+            <p class="view-sub">Orders in refund process or already refunded</p>
+          </div>
+          <div class="view-tools">
+            <input id="refund-search" class="search-input" placeholder="Search order / client / phone…" oninput="App.renderRefund && App.renderRefund()" />
+          </div>
+        </div>
+        <div id="refund-list" class="card-list"></div>
+      </section>
+
+<section id="view-fms" class="view" style="display:none">
         <div class="fms-toolbar">
           <input id="fms-search" type="search" placeholder="Search order / client / city…" oninput="App.renderFmsSheet()" />
           <select id="fms-filter" onchange="App.renderFmsSheet()">
