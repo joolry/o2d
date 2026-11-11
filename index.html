@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
+  <!-- LOGIN -->
   <div id="login-screen" class="screen login-screen">
     <div class="login-bg"></div>
     <div class="login-card">
@@ -32,10 +33,11 @@
       </div>
       <button id="login-btn" class="btn primary full login-btn" onclick="App.doLogin()">→ Sign In</button>
       <p id="login-error" class="error-text"></p>
-      <p class="login-foot">JOOLRY Order FMS · v2.9</p>
+      <p class="login-foot">JOOLRY Order FMS · v3.0 Smart Hybrid</p>
     </div>
   </div>
 
+  <!-- APP SHELL -->
   <div id="app-screen" class="app-shell" style="display:none">
     <div id="global-loading" class="global-loading" style="display:none">Syncing…</div>
 
@@ -60,16 +62,34 @@
 
       <nav class="sidebar-nav" id="nav-tabs">
         <div class="nav-section">MAIN</div>
-        <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span><span class="nav-label">Dashboard</span></button>
+        <button class="nav-btn active" data-view="dashboard" onclick="App.setView('dashboard')">
+          <span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+          <span class="nav-label">Dashboard</span>
+        </button>
 
         <div class="nav-section">WORK</div>
-        <button class="nav-btn" data-view="mywork" onclick="App.setView('mywork')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="nav-label">Pending Works</span></button>
-        <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="8" rx="1"/></svg></span><span class="nav-label">By Stages</span></button>
-        <button class="nav-btn" data-view="due" onclick="App.setView('due')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="nav-label">Due Today</span></button>
-        <button class="nav-btn" data-view="late" onclick="App.setView('late')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 4.3L2.6 18a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 4.3a2 2 0 00-3.4 0z"/></svg></span><span class="nav-label">Late Orders</span></button>
+        <button class="nav-btn" data-view="mywork" onclick="App.setView('mywork')">
+          <span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
+          <span class="nav-label">Pending Works</span>
+        </button>
+        <button class="nav-btn" data-view="kanban" onclick="App.setView('kanban')">
+          <span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="8" rx="1"/></svg></span>
+          <span class="nav-label">By Stages</span>
+        </button>
+        <button class="nav-btn" data-view="due" onclick="App.setView('due')">
+          <span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          <span class="nav-label">Due Today</span>
+        </button>
+        <button class="nav-btn" data-view="late" onclick="App.setView('late')">
+          <span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 4.3L2.6 18a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.7 4.3a2 2 0 00-3.4 0z"/></svg></span>
+          <span class="nav-label">Late Orders</span>
+        </button>
 
         <div class="nav-section">ORDERS</div>
-        <button class="nav-btn" data-view="fms" onclick="App.setView('fms')"><span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span><span class="nav-label">All Orders</span></button>
+        <button class="nav-btn" data-view="fms" onclick="App.setView('fms')">
+          <span class="nav-icon"><svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+          <span class="nav-label">All Orders</span>
+        </button>
       </nav>
 
       <div class="sidebar-foot">
@@ -87,7 +107,7 @@
         <button class="icon-btn menu-btn" onclick="App.toggleSidebar()" title="Menu">☰</button>
         <div class="topbar-center">
           <div class="topbar-title" id="topbar-title">Dashboard</div>
-          <div class="topbar-crumb" id="topbar-crumb">JOOLRY · Order FMS</div>
+          <div class="topbar-crumb" id="topbar-crumb">JOOLRY · Order FMS v3</div>
         </div>
         <div class="top-actions">
           <div class="top-search-wrap">
@@ -99,6 +119,7 @@
         </div>
       </header>
 
+      <!-- DASHBOARD -->
       <section id="view-dashboard" class="view">
         <div class="greeting" id="greeting"></div>
         <div class="stats-row" id="stats-row"></div>
@@ -112,13 +133,15 @@
         </div>
       </section>
 
+      <!-- MY WORK -->
       <section id="view-mywork" class="view" style="display:none">
-        <p class="view-hint">Aapka next pending step.</p>
+        <p class="view-hint">Aapka next pending step — sirf aapke allowed stages.</p>
         <div id="mywork-list" class="work-list"></div>
       </section>
 
+      <!-- KANBAN -->
       <section id="view-kanban" class="view" style="display:none">
-        <p class="view-hint">Sequential stages — next unlocks after previous Done.</p>
+        <p class="view-hint">Stages — sequential flow + decision branches.</p>
         <div class="kanban-toolbar">
           <input id="kanban-search" type="search" placeholder="Search…" oninput="App.renderKanban()" />
           <select id="kanban-filter" onchange="App.renderKanban()">
@@ -130,16 +153,19 @@
         <div id="kanban-board" class="kanban-board"></div>
       </section>
 
+      <!-- DUE -->
       <section id="view-due" class="view" style="display:none">
-        <p class="view-hint">Orders with planned date today (or overdue planned).</p>
+        <p class="view-hint">Orders with next action due today (or overdue).</p>
         <div id="due-list" class="work-list"></div>
       </section>
 
+      <!-- LATE -->
       <section id="view-late" class="view" style="display:none">
-        <p class="view-hint">Positive delay.</p>
+        <p class="view-hint">Positive office-hour delay.</p>
         <div id="late-list" class="work-list"></div>
       </section>
 
+      <!-- ALL ORDERS (FMS TABLE) -->
       <section id="view-fms" class="view" style="display:none">
         <div class="fms-toolbar">
           <input id="fms-search" type="search" placeholder="Search order / client / city…" oninput="App.renderFmsSheet()" />
@@ -147,14 +173,22 @@
             <option value="open">Open</option>
             <option value="late">Late</option>
             <option value="mine">My work</option>
+            <option value="completed">Completed</option>
+            <option value="refunded">Refunded</option>
             <option value="all">All</option>
           </select>
           <select id="fms-stage" onchange="App.renderFmsSheet()">
             <option value="">All stages</option>
-            <option value="box2">Availability</option>
-            <option value="box3">Pack & Dispatch</option>
-            <option value="box4">Client Update</option>
-            <option value="box5">Shopify Status</option>
+            <option value="STOCK_CHECK">Stock Check</option>
+            <option value="VENDOR_CONTACT">Vendor Contact</option>
+            <option value="VENDOR_ARRANGE">Vendor Arrange</option>
+            <option value="VENDOR_FOLLOWUP">Vendor Follow-up</option>
+            <option value="CLIENT_DECISION">Client Decision</option>
+            <option value="READY_PACKING">Ready for Packing</option>
+            <option value="PACKING">Packing</option>
+            <option value="DISPATCH">Dispatch</option>
+            <option value="TRACKING_UPDATE">Tracking Update</option>
+            <option value="REFUND_PROCESS">Refund Process</option>
           </select>
         </div>
         <div class="fms-summary" id="fms-summary"></div>
@@ -167,16 +201,11 @@
                 <th>Value</th>
                 <th>City</th>
                 <th>Stage</th>
-                <th colspan="2" class="box-head">1. Avail</th>
-                <th colspan="2" class="box-head">2. Pack</th>
-                <th colspan="2" class="box-head">3. Client</th>
-                <th colspan="2" class="box-head">4. Shopify</th>
+                <th>Stock</th>
+                <th>Vendor</th>
+                <th>Client Dec.</th>
                 <th>Status</th>
-              </tr>
-              <tr class="sub-head">
-                <th class="sticky-col"></th><th></th><th></th><th></th><th></th>
-                <th>Pln</th><th>Act</th><th>Pln</th><th>Act</th>
-                <th>Pln</th><th>Act</th><th>Pln</th><th>Act</th><th></th>
+                <th>Delay</th>
               </tr>
             </thead>
             <tbody id="fms-body"></tbody>
@@ -186,6 +215,7 @@
     </main>
   </div>
 
+  <!-- DETAIL DRAWER -->
   <div id="detail-overlay" class="overlay" onclick="App.closeDetail()"></div>
   <aside id="detail-panel" class="drawer">
     <div class="drawer-head">
@@ -194,6 +224,7 @@
     </div>
     <div class="drawer-body">
       <div class="info-grid" id="d-info"></div>
+
       <div id="d-admin-edit" style="display:none">
         <h3>Admin edit</h3>
         <div class="form-grid">
@@ -205,22 +236,31 @@
           <select id="e-status">
             <option value="">— Status —</option>
             <option value="Open">Open</option>
-            <option value="Closed">Closed</option>
-            <option value="Done">Done</option>
+            <option value="Completed">Completed</option>
+            <option value="Refunded">Refunded</option>
+            <option value="Delayed">Delayed</option>
+            <option value="Cancelled">Cancelled</option>
           </select>
           <button class="btn primary" onclick="App.saveOrderEdit()">Save</button>
         </div>
       </div>
+
       <h3>Order Items</h3>
       <div id="d-items" class="items-box"></div>
-      <h3>Steps (Sequential)</h3>
-      <div id="d-boxes"></div>
+
+      <h3>Actions</h3>
+      <div id="d-boxes" class="action-area">
+        <!-- Decision buttons rendered by app.js -->
+      </div>
+
       <h3>Courier / Tracking</h3>
       <div class="form-grid">
         <select id="d-courier" onchange="App.onCourierChange()">
           <option value="">— Select Courier —</option>
           <option value="Shree Maruti">Shree Maruti</option>
           <option value="Blue Dart Express">Blue Dart Express</option>
+          <option value="Delhivery">Delhivery</option>
+          <option value="Other">Other</option>
         </select>
         <input id="d-awb" placeholder="AWB / Tracking" />
         <select id="d-auto">
@@ -229,10 +269,16 @@
         </select>
         <button id="btn-save-courier" class="btn primary" onclick="App.saveCourier()">Save courier</button>
       </div>
+
+      <h3>History</h3>
+      <div id="d-timeline" class="timeline">
+        <!-- Events rendered by app.js -->
+      </div>
     </div>
   </aside>
 
   <div id="toast" class="toast"></div>
+
   <script src="appconfig.js"></script>
   <script src="core.js"></script>
   <script src="app.js"></script>
