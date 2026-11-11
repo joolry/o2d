@@ -1,4 +1,4 @@
-// JOOLRY Order FMS v3.0 — Smart Hybrid (Stage-based + Decision Tree)
+// JOOLRY Order FMS v3.1 — Smart Hybrid + Refund + Due/Delay (Stage-based + Decision Tree)
 (function () {
   'use strict';
   const C = window.Core;
@@ -15,7 +15,7 @@
   const VIEW_TITLES = {
     dashboard: 'Dashboard', mywork: 'Pending Works',
     kanban: 'By Stages', due: 'Due Today', late: 'Late Orders',
-    fms: 'All Orders'
+    fms: 'All Orders', refund: 'Refunds'
   };
 
   // Stage display labels (match Process_Stages)
@@ -39,7 +39,7 @@
 
   // Kanban columns order
   const KANBAN_STAGES = [
-    'STOCK_CHECK', 'VENDOR_CONTACT', 'VENDOR_ARRANGE', 'VENDOR_FOLLOWUP',
+    'NEW', 'STOCK_CHECK', 'VENDOR_CONTACT', 'VENDOR_ARRANGE', 'VENDOR_FOLLOWUP',
     'CLIENT_DECISION', 'READY_PACKING', 'PACKING', 'DISPATCH', 'TRACKING_UPDATE'
   ];
 
@@ -265,6 +265,7 @@
     if (v === 'dashboard') renderDashboard();
     else if (v === 'mywork') renderMyWork();
     else if (v === 'kanban') renderKanban();
+    else if (v === 'refund') renderRefund();
     else if (v === 'due') renderDue();
     else if (v === 'late') renderLate();
     else if (v === 'fms') renderFmsSheet();
@@ -276,7 +277,7 @@
     }
     state.view = v;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-    ['dashboard', 'mywork', 'kanban', 'due', 'late', 'fms'].forEach(id => {
+    ['dashboard', 'mywork', 'kanban', 'due', 'late', 'refund', 'fms'].forEach(id => {
       const el = $('#view-' + id);
       if (el) el.style.display = id === v ? 'block' : 'none';
     });
@@ -523,12 +524,55 @@
 
   /* ── Due / Late ──────────────────────────────────────────────────────── */
 
+  
+  function renderRefund() {
+    const q = ($('#refund-search') && $('#refund-search').value) || '';
+    let list = (state.orders || []).filter(o => {
+      const st = String(o.currentStage || '').toUpperCase();
+      const ov = String(o.overallStatus || '').toLowerCase();
+      return st === 'REFUND_PROCESS' || st === 'REFUNDED' || ov === 'refunded';
+    });
+    if (q) {
+      const qq = q.toLowerCase();
+      list = list.filter(o =>
+        String(o.orderId || '').toLowerCase().includes(qq) ||
+        String(o.clientName || '').toLowerCase().includes(qq) ||
+        String(o.phone || '').includes(qq)
+      );
+    }
+    list.sort((a, b) => String(b.entryTime || '').localeCompare(String(a.entryTime || '')));
+
+    const el = $('#refund-list');
+    if (!el) return;
+    if (!list.length) {
+      el.innerHTML = '<div class="empty-hint">No refund orders 🎉</div>';
+      return;
+    }
+    el.innerHTML = list.map(o => {
+      const st = String(o.currentStage || '').toUpperCase();
+      const isDone = st === 'REFUNDED' || String(o.overallStatus || '').toLowerCase() === 'refunded';
+      return `
+        <div class="work-card ${isDone ? 'done' : ''}" onclick="App.openDetail('${esc(o.orderId)}')">
+          <div class="wc-top">
+            <span class="wc-id">${esc(o.orderId)}</span>
+            <span class="wc-stage">${esc(stageLabel(o.currentStage))}</span>
+          </div>
+          <div class="wc-name">${esc(o.clientName || '')}</div>
+          <div class="wc-meta">${money(o.orderValue)} · ${esc(o.city || '')} · ${esc(o.phone || '')}</div>
+          <div class="wc-status">${isDone ? '✅ Refunded' : '⏳ Processing'}</div>
+        </div>`;
+    }).join('');
+  }
+
+
   function renderDue() {
     const today = (window.Core && todayApprox()) || new Date().toISOString().slice(0, 10);
     const list = (state.orders || []).filter(o => {
       if (!isOpen(o)) return false;
       const due = String(o.nextActionDue || '').slice(0, 10);
-      return due && due <= today;
+      if (due && due <= today) return true;
+      // fallback: show late orders even if nextActionDue is empty
+      return delayVal(o) > 0;
     }).sort((a, b) => delayVal(b) - delayVal(a));
 
     const el = $('#due-list');
@@ -874,7 +918,7 @@
     toggleSidebar, toggleCollapse, toggleTheme, globalSearch,
     openDetail, closeDetail, doDecision,
     saveCourier, saveOrderEdit, onCourierChange,
-    renderKanban, renderFmsSheet
+    renderKanban, renderFmsSheet, renderRefund
   };
 
   // Init
