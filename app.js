@@ -1,4 +1,4 @@
-// JOOLRY Order FMS v2.9 — Themes + multi-view + responsive
+// JOOLRY Order FMS v3.0 — Smart Hybrid (Stage-based + Decision Tree)
 (function () {
   'use strict';
   const C = window.Core;
@@ -7,61 +7,70 @@
         fmtDate = C.fmtDate, money = C.money, $ = C.$, $$ = C.$$;
 
   let state = {
-    user: null, orders: [], steps: [], allowedBoxes: [],
+    user: null, orders: [], stages: [], allowedStages: [],
     view: 'dashboard', selected: null, loading: false
   };
   let pollTimer = null;
+
   const VIEW_TITLES = {
-    dashboard: 'Dashboard', insights: 'Insights', mywork: 'Pending Works',
+    dashboard: 'Dashboard', mywork: 'Pending Works',
     kanban: 'By Stages', due: 'Due Today', late: 'Late Orders',
-    fms: 'All Orders', courier: 'Courier Board', pipeline: 'Value Pipeline',
-    cities: 'By City', done: 'Completed'
+    fms: 'All Orders'
   };
 
-  const BOX_COLS = [
-    { key: 'box2', n: 2, label: '1. Availability Check' },
-    { key: 'box3', n: 3, label: '2. Pack & Dispatch' },
-    { key: 'box4', n: 4, label: '3. Client Update' },
-    { key: 'box5', n: 5, label: '4. Shopify Status' },
-    { key: 'done', n: 0, label: 'Done' }
-  ];
+  // Stage display labels (match Process_Stages)
   const STAGE_LABELS = {
-    box2: 'Availability Check', box3: 'Pack & Dispatch',
-    box4: 'Client Update', box5: 'Shopify Status', done: 'Done'
+    NEW: 'New',
+    STOCK_CHECK: 'Stock Check',
+    VENDOR_CONTACT: 'Vendor Contact',
+    VENDOR_ARRANGE: 'Vendor Arrange',
+    VENDOR_FOLLOWUP: 'Vendor Follow-up',
+    CLIENT_DECISION: 'Client Decision',
+    READY_PACKING: 'Ready for Packing',
+    PACKING: 'Packing',
+    DISPATCH: 'Dispatch',
+    TRACKING_UPDATE: 'Tracking Update',
+    DISPATCHED: 'Dispatched',
+    REFUND_PROCESS: 'Refund Process',
+    REFUNDED: 'Refunded',
+    DELAYED: 'Delayed',
+    CANCELLED: 'Cancelled'
   };
-  const BOX_FULL = {
-    2: 'Product Availability Check (Inventory Audit)',
-    3: 'Order Packing and Dispatch',
-    4: 'Client Update (Tracking)',
-    5: 'Update Delivery Status in Shopify'
-  };
+
+  // Kanban columns order
+  const KANBAN_STAGES = [
+    'STOCK_CHECK', 'VENDOR_CONTACT', 'VENDOR_ARRANGE', 'VENDOR_FOLLOWUP',
+    'CLIENT_DECISION', 'READY_PACKING', 'PACKING', 'DISPATCH', 'TRACKING_UPDATE'
+  ];
 
   function role() { return String(state.user && state.user.role || '').toLowerCase(); }
   function isAdmin() { return role() === 'admin'; }
   function isViewer() { return role() === 'viewer'; }
   function isOps() { return role() === 'ops'; }
-  function isOpsOrAdmin() { return isAdmin() || isOps(); }
-  function hasAnyBox() { return isAdmin() || (state.allowedBoxes && state.allowedBoxes.length > 0); }
-  function canDoBox(n) {
+
+  function canDoStage(stageCode) {
     if (isAdmin()) return true;
     if (isViewer()) return false;
-    return state.allowedBoxes.indexOf(Number(n)) !== -1;
+    const allowed = state.allowedStages || [];
+    if (allowed.indexOf('ALL') !== -1) return true;
+    return allowed.indexOf(String(stageCode || '').toUpperCase()) !== -1;
   }
-  function canCourier() { return isAdmin() || (isOps() && hasAnyBox()); }
-  function canManual() { return isAdmin() || isOps(); }
 
-  /** Sequential gate: Box N only if previous box is Done */
-  function isBoxDone(o, n) {
-    if (!o) return false;
-    const b = o['box' + n];
-    return b && String(b.status || '').toLowerCase() === 'done';
+  function hasAnyStage() {
+    return isAdmin() || (state.allowedStages && state.allowedStages.length > 0);
   }
-  function isPrevDone(o, n) {
-    if (n <= 2) return true; // Box 2 has no previous
-    return isBoxDone(o, n - 1);
+
+  function isOpen(o) {
+    const s = String(o.overallStatus || '').toLowerCase();
+    return s !== 'completed' && s !== 'refunded' && s !== 'cancelled';
   }
-  function canActOnBox(o, n) {
-    return canDoBox(n) && isPrevDone(o, n) && !isBoxDone(o, n);
+
+  function isTerminal(stage) {
+    return ['DISPATCHED', 'REFUNDED', 'CANCELLED'].indexOf(String(stage || '').toUpperCase()) !== -1;
+  }
+
+  function stageLabel(code) {
+    return STAGE_LABELS[String(code || '').toUpperCase()] || code || '—';
   }
 
   function setLoading(on) {
@@ -70,13 +79,22 @@
     if (el) el.style.display = on ? 'block' : 'none';
     if (btn) { btn.disabled = on; btn.textContent = on ? '…' : '↻'; }
   }
+
   function toast(msg, type) {
     const el = $('#toast'); if (!el) return;
     el.textContent = msg;
     el.className = 'toast show' + (type === 'error' ? ' error' : type === 'ok' ? ' ok' : '');
     clearTimeout(el._t);
-    el._t = setTimeout(() => { el.className = 'toast'; }, 2600);
+    el._t = setTimeout(() => { el.className = 'toast'; }, 2800);
   }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /* ── Boot / Auth ─────────────────────────────────────────────────────── */
 
   async function boot() {
     if (!getToken()) { showLogin(); return; }
@@ -84,19 +102,20 @@
     showApp();
     await refresh();
   }
+
   function showLogin() {
     $('#login-screen').style.display = 'flex';
     $('#app-screen').style.display = 'none';
   }
+
   function showApp() {
     $('#login-screen').style.display = 'none';
     $('#app-screen').style.display = 'flex';
     if (state.user) {
-      const name = state.user.name || state.user.username || state.user.email || '—';
-      const boxes = isAdmin() ? 'all' : (state.allowedBoxes || []).join(',') || 'none';
-      const roleTxt = (state.user.role || '') + ' · ' + boxes;
+      const name = state.user.name || state.user.username || '—';
+      const stages = isAdmin() ? 'all' : (state.allowedStages || []).join(', ') || 'none';
       if ($('#user-name')) $('#user-name').textContent = name;
-      if ($('#user-role')) $('#user-role').textContent = roleTxt;
+      if ($('#user-role')) $('#user-role').textContent = (state.user.role || '') + ' · ' + stages;
       const av = $('#user-avatar');
       if (av) {
         const parts = String(name).trim().split(/\s+/);
@@ -105,8 +124,8 @@
     }
     applyNavAccess();
     startAutoRefresh();
-    if (hasAnyBox() && !isAdmin() && !isViewer()) {
-      setView('kanban');
+    if (hasAnyStage() && !isAdmin() && !isViewer()) {
+      setView('mywork');
     } else {
       setView('dashboard');
     }
@@ -121,15 +140,18 @@
     const badge = $('#auto-badge');
     if (badge) { badge.textContent = '● Live'; badge.classList.remove('off'); }
   }
+
   function stopAutoRefresh() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
+
   function toggleSidebar() {
     const sb = $('#sidebar');
     const bd = $('#sidebar-backdrop');
     if (sb) sb.classList.toggle('open');
     if (bd) bd.classList.toggle('open', sb && sb.classList.contains('open'));
   }
+
   function toggleCollapse() {
     const shell = $('#app-screen');
     if (!shell) return;
@@ -137,6 +159,7 @@
     const btn = document.querySelector('.collapse-btn');
     if (btn) btn.textContent = shell.classList.contains('collapsed') ? '»' : '«';
   }
+
   function globalSearch() {
     const q = ($('#global-search') && $('#global-search').value || '').trim();
     if (!q) return;
@@ -144,6 +167,7 @@
     const fs = $('#fms-search');
     if (fs) { fs.value = q; renderFmsSheet(); }
   }
+
   function applyTheme(t) {
     document.documentElement.setAttribute('data-theme', t);
     try { localStorage.setItem('joolry_fms_theme', t); } catch (e) {}
@@ -152,21 +176,22 @@
     const btn = $('#theme-btn');
     if (btn) btn.textContent = t === 'dark' ? '☀ Light' : '◐ Dark';
   }
+
   function toggleTheme() {
     const cur = document.documentElement.getAttribute('data-theme') || 'light';
     applyTheme(cur === 'dark' ? 'light' : 'dark');
   }
+
   function initTheme() {
     let t = 'light';
     try { t = localStorage.getItem('joolry_fms_theme') || 'light'; } catch (e) {}
     applyTheme(t);
   }
 
-  /** Strict nav: only show tabs the user actually needs */
   function applyNavAccess() {
     const show = {
       dashboard: true,
-      mywork: hasAnyBox() && !isViewer(),
+      mywork: hasAnyStage() && !isViewer(),
       kanban: true,
       due: true,
       late: true,
@@ -186,20 +211,23 @@
     const btn = $('#login-btn');
     btn.disabled = true; btn.textContent = 'Signing in…';
     const res = await rpc('login', [u, p]);
-    btn.disabled = false; btn.textContent = 'Sign in';
+    btn.disabled = false; btn.textContent = '→ Sign In';
     if (!res || !res.success) { err.textContent = (res && res.error) || 'Login failed'; return; }
     setSession(res.token, res.user);
     state.user = res.user;
-    state.allowedBoxes = res.user.allowedBoxes || [];
+    state.allowedStages = res.user.allowedStages || [];
     showApp();
     await refresh();
   }
+
   function doLogout() {
     stopAutoRefresh();
     clearSession();
-    state = { user: null, orders: [], steps: [], allowedBoxes: [], view: 'dashboard', selected: null, loading: false };
+    state = { user: null, orders: [], stages: [], allowedStages: [], view: 'dashboard', selected: null, loading: false };
     showLogin();
   }
+
+  /* ── Data ────────────────────────────────────────────────────────────── */
 
   async function refresh(silent) {
     if (!silent) setLoading(true);
@@ -210,37 +238,26 @@
       ]);
       if (ordRes && ordRes.success) state.orders = ordRes.orders || [];
       else toast((ordRes && ordRes.error) || 'Load failed', 'error');
+
       if (bootRes && bootRes.success) {
-        state.steps = bootRes.steps || [];
+        state.stages = bootRes.stages || [];
         if (bootRes.user) {
           state.user = Object.assign({}, state.user, bootRes.user);
-          state.allowedBoxes = bootRes.user.allowedBoxes || state.allowedBoxes || [];
+          state.allowedStages = bootRes.user.allowedStages || state.allowedStages || [];
         }
-        computeAllowed();
       } else {
-        const st = await rpc('getSteps', []);
-        if (st && st.success) state.steps = st.steps || [];
-        computeAllowed();
+        const st = await rpc('getStages', []);
+        if (st && st.success) state.stages = st.stages || [];
       }
       applyNavAccess();
       renderAll();
-          } finally { if (!silent) setLoading(false); }
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }
 
-  function computeAllowed() {
-    if (isAdmin()) { state.allowedBoxes = [2, 3, 4, 5]; return; }
-    if (state.user && state.user.allowedBoxes && state.user.allowedBoxes.length) {
-      state.allowedBoxes = state.user.allowedBoxes.map(Number).filter(n => n >= 2 && n <= 5);
-      return;
-    }
-    const uname = String(state.user && state.user.username || '').toLowerCase();
-    const set = {};
-    (state.steps || []).forEach(s => {
-      String(s.allowed || '').toLowerCase().split(',').forEach(x => {
-        if (x.trim() === uname) set[parseInt(s.boxNo, 10)] = true;
-      });
-    });
-    state.allowedBoxes = Object.keys(set).map(Number).filter(n => n >= 2 && n <= 5);
+  function renderAll() {
+    renderCurrentView();
   }
 
   function renderCurrentView() {
@@ -252,421 +269,324 @@
     else if (v === 'late') renderLate();
     else if (v === 'fms') renderFmsSheet();
   }
-  function renderAll() {
-    renderCurrentView();
-  }
 
   function setView(v) {
-    if (v === 'mywork' && (isViewer() || !hasAnyBox())) { toast('No tasks for you', 'error'); return; }
+    if (v === 'mywork' && (isViewer() || !hasAnyStage())) {
+      toast('No tasks for you', 'error'); return;
+    }
     state.view = v;
     $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-    ['dashboard','mywork','kanban','due','late','fms'].forEach(id => {
+    ['dashboard', 'mywork', 'kanban', 'due', 'late', 'fms'].forEach(id => {
       const el = $('#view-' + id);
       if (el) el.style.display = id === v ? 'block' : 'none';
     });
     const title = $('#topbar-title');
     if (title) title.textContent = VIEW_TITLES[v] || v;
-    // close mobile sidebar
     const sb = $('#sidebar');
     if (sb) sb.classList.remove('open');
     const bd = $('#sidebar-backdrop');
     if (bd) bd.classList.remove('open');
-    if (v === 'fms') renderFmsSheet();
-    if (v === 'late') renderLate();
-    if (v === 'mywork') renderMyWork();
-    if (v === 'kanban') {
-      const filterEl = $('#kanban-filter');
-      if (filterEl && hasAnyBox() && !isAdmin() && !filterEl._touched) {
-        filterEl.value = 'mine';
-        filterEl._touched = true;
-      }
-      renderKanban();
-    }
-    if (v === 'dashboard') renderDashboard();
-    if (v === 'due') renderDue();
+    renderCurrentView();
   }
 
-  function isOpen(o) {
-    const s = String(o.overallStatus || '').toLowerCase();
-    return s !== 'closed' && s !== 'done';
+  /* ── Helpers ─────────────────────────────────────────────────────────── */
+
+  function delayVal(o) {
+    const d = parseFloat(o.delayOfficeHrs);
+    return isNaN(d) ? 0 : d;
   }
-  function worstDelay(o) {
-    let w = 0;
-    [o.box2, o.box3, o.box4, o.box5].forEach(b => {
-      if (b && b.delay !== '' && b.delay != null) {
-        const d = parseFloat(b.delay);
-        if (!isNaN(d) && d > w) w = d;
-      }
-    });
-    return w;
-  }
-  function currentStage(o) {
-    if (!isOpen(o)) return 'done';
-    const cb = String(o.currentBox || '').toLowerCase();
-    if (cb.indexOf('2') >= 0) return 'box2';
-    if (cb.indexOf('3') >= 0) return 'box3';
-    if (cb.indexOf('4') >= 0) return 'box4';
-    if (cb.indexOf('5') >= 0) return 'box5';
-    if (!o.box2 || !o.box2.actual) return 'box2';
-    if (!o.box3 || !o.box3.actual) return 'box3';
-    const auto = String(o.courierAutoUpdate || '').toLowerCase() === 'yes';
-    if (!auto && (!o.box4 || !o.box4.actual)) return 'box4';
-    if (!o.box5 || !o.box5.actual) return 'box5';
-    return 'done';
-  }
-  function orderNeedsMyBox(o) {
-    if (!isOpen(o) || isViewer()) return false;
-    const st = currentStage(o);
-    const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
-    return n && canDoBox(n);
-  }
+
   function shortDate(s) {
     if (!s) return '—';
     const t = String(s).replace('T', ' ');
     return t.length > 16 ? t.slice(5, 16) : t.slice(0, 16);
   }
-  function boxCell(b, isAct) {
-    if (!b) return { txt: '—', cls: '' };
-    const val = isAct ? b.actual : b.planned;
-    const done = String(b.status || '').toLowerCase() === 'done';
-    const delay = b.delay !== '' && b.delay != null ? parseFloat(b.delay) : null;
-    let cls = '';
-    if (isAct) {
-      if (done) cls = delay > 0 ? 'cell-late' : 'cell-ok';
-      else if (delay > 0) cls = 'cell-late';
-      else cls = 'cell-pending';
-    }
-    return { txt: shortDate(val), cls: cls };
+
+  function orderNeedsMyAction(o) {
+    if (!isOpen(o) || isViewer()) return false;
+    const stage = String(o.currentStage || '').toUpperCase();
+    return canDoStage(stage) && !isTerminal(stage);
   }
 
-  function barHtml(rows) {
-    const max = Math.max(1, ...rows.map(r => r.v));
-    return rows.map(r => `
-      <div class="bar-row"><span>${esc(r.l)}</span>
-      <div class="bar-track"><div class="bar-fill ${r.c || ''}" style="width:${(r.v/max)*100}%"></div></div>
-      <span>${r.v}</span></div>`).join('');
-  }
+  function filteredOrders(filter, searchQ, stageFilter) {
+    let list = state.orders || [];
+    const q = (searchQ || '').toLowerCase().trim();
 
-  function filteredList(filterSel, searchSel, stageSel) {
-    const q = ((searchSel && $(searchSel) && $(searchSel).value) || '').toLowerCase();
-    const filter = (filterSel && $(filterSel) && $(filterSel).value) || 'open';
-    const stage = (stageSel && $(stageSel) && $(stageSel).value) || '';
-    let list = state.orders.slice();
     if (filter === 'open') list = list.filter(isOpen);
-    if (filter === 'late') list = list.filter(o => isOpen(o) && worstDelay(o) > 0);
-    if (filter === 'mine') list = list.filter(orderNeedsMyBox);
-    if (stage) list = list.filter(o => currentStage(o) === stage);
-    if (q) list = list.filter(o =>
-      String(o.orderId).toLowerCase().indexOf(q) >= 0 ||
-      String(o.clientName || '').toLowerCase().indexOf(q) >= 0 ||
-      String(o.city || '').toLowerCase().indexOf(q) >= 0 ||
-      String(o.shopifyNo || '').toLowerCase().indexOf(q) >= 0);
+    else if (filter === 'mine') list = list.filter(orderNeedsMyAction);
+    else if (filter === 'late') list = list.filter(o => isOpen(o) && delayVal(o) > 0);
+    else if (filter === 'completed') list = list.filter(o => String(o.overallStatus || '').toLowerCase() === 'completed');
+    else if (filter === 'refunded') list = list.filter(o => String(o.overallStatus || '').toLowerCase() === 'refunded');
+
+    if (stageFilter) {
+      list = list.filter(o => String(o.currentStage || '').toUpperCase() === stageFilter.toUpperCase());
+    }
+
+    if (q) {
+      list = list.filter(o => {
+        const hay = [
+          o.orderId, o.shopifyNo, o.clientName, o.city, o.phone,
+          o.currentStage, o.overallStatus, o.notes
+        ].join(' ').toLowerCase();
+        return hay.indexOf(q) !== -1;
+      });
+    }
     return list;
   }
 
-  // ── DASHBOARD: simplified for non-admin ──
-  function renderDashboard() {
-    const open = state.orders.filter(isOpen);
-    const late = open.filter(o => worstDelay(o) > 0);
-    const mine = open.filter(orderNeedsMyBox);
-    const value = open.reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
+  /* ── Dashboard ───────────────────────────────────────────────────────── */
 
-    // Staff: focus on My work + Late. Admin: full stats
-    if (isAdmin()) {
-      $('#stats-row').innerHTML = `
-        <div class="stat-card"><div class="label">Open</div><div class="value">${open.length}</div></div>
-        <div class="stat-card late"><div class="label">Late</div><div class="value">${late.length}</div></div>
-        <div class="stat-card gold"><div class="label">My work</div><div class="value">${mine.length}</div></div>
-        <div class="stat-card ok"><div class="label">Open value</div><div class="value" style="font-size:20px">${money(value)}</div></div>`;
-    } else if (hasAnyBox()) {
-      $('#stats-row').innerHTML = `
-        <div class="stat-card gold"><div class="label">My pending</div><div class="value">${mine.length}</div></div>
-        <div class="stat-card late"><div class="label">Late (mine)</div><div class="value">${mine.filter(o => worstDelay(o) > 0).length}</div></div>
-        <div class="stat-card"><div class="label">All open</div><div class="value">${open.length}</div></div>
-        <div class="stat-card ok"><div class="label">All late</div><div class="value">${late.length}</div></div>`;
-    } else {
-      // Viewer
-      $('#stats-row').innerHTML = `
-        <div class="stat-card"><div class="label">Open</div><div class="value">${open.length}</div></div>
-        <div class="stat-card late"><div class="label">Late</div><div class="value">${late.length}</div></div>
-        <div class="stat-card ok"><div class="label">Open value</div><div class="value" style="font-size:20px">${money(value)}</div></div>`;
+  function renderDashboard() {
+    const open = (state.orders || []).filter(isOpen);
+    const late = open.filter(o => delayVal(o) > 0);
+    const mine = open.filter(orderNeedsMyAction);
+    const refunded = (state.orders || []).filter(o => String(o.overallStatus || '').toLowerCase() === 'refunded');
+
+    const greeting = $('#greeting');
+    if (greeting) {
+      const hour = new Date().getHours();
+      const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+      const name = (state.user && (state.user.name || state.user.username)) || '';
+      greeting.textContent = hello + (name ? ', ' + name.split(' ')[0] : '') + ' 👋';
     }
 
-    const counts = { box2: 0, box3: 0, box4: 0, box5: 0, done: 0 };
-    state.orders.forEach(o => { counts[currentStage(o)]++; });
-    $('#chart-stages').innerHTML = barHtml([
-      { l: 'Availability', v: counts.box2 }, { l: 'Pack/Dispatch', v: counts.box3, c: 'gold' },
-      { l: 'Client', v: counts.box4, c: 'rose' }, { l: 'Shopify', v: counts.box5, c: 'ok' },
-      { l: 'Done', v: counts.done, c: 'ok' }
-    ]);
+    const stats = $('#stats-row');
+    if (stats) {
+      stats.innerHTML = `
+        <div class="stat-card"><div class="stat-n">${open.length}</div><div class="stat-l">Open</div></div>
+        <div class="stat-card late"><div class="stat-n">${late.length}</div><div class="stat-l">Late</div></div>
+        <div class="stat-card"><div class="stat-n">${mine.length}</div><div class="stat-l">My Work</div></div>
+        <div class="stat-card"><div class="stat-n">${refunded.length}</div><div class="stat-l">Refunded</div></div>
+      `;
+    }
 
-    let ontime = 0, mild = 0, high = 0;
+    // Stage counts
+    const stageCounts = {};
+    KANBAN_STAGES.forEach(s => stageCounts[s] = 0);
     open.forEach(o => {
-      const d = worstDelay(o);
-      if (d <= 0) ontime++; else if (d < 9) mild++; else high++;
+      const s = String(o.currentStage || '').toUpperCase();
+      if (stageCounts[s] !== undefined) stageCounts[s]++;
+      else stageCounts[s] = (stageCounts[s] || 0) + 1;
     });
-    $('#chart-delay').innerHTML = barHtml([
-      { l: 'On time', v: ontime, c: 'ok' }, { l: '< 1d late', v: mild, c: 'gold' },
-      { l: '≥ 1d late', v: high, c: 'late' }
-    ]);
 
-    // Attention: for staff prefer their late work
-    const attnSrc = hasAnyBox() && !isAdmin()
-      ? open.filter(orderNeedsMyBox).filter(o => worstDelay(o) > 0)
-      : open.filter(o => worstDelay(o) > 0);
-    const attn = attnSrc.sort((a, b) => worstDelay(b) - worstDelay(a)).slice(0, 10);
-    const attnEl = $('#attention-list');
-    if (attnEl) attnEl.innerHTML = attn.length
-      ? attn.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
-          <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
-          <span class="badge late">+${worstDelay(o).toFixed(1)}h</span></div>`).join('')
-      : '<div class="empty">No delayed work 🎉</div>';
+    const chartStages = $('#chart-stages');
+    if (chartStages) {
+      const rows = KANBAN_STAGES.map(s => ({
+        l: stageLabel(s).replace('Vendor ', 'V. ').replace('Client ', 'C. '),
+        v: stageCounts[s] || 0,
+        c: (stageCounts[s] || 0) > 5 ? 'hot' : ''
+      })).filter(r => r.v > 0);
+      chartStages.innerHTML = barHtml(rows);
+    }
 
-    // My Workload chart
-    const mineEl = $('#chart-mine');
-    if (mineEl) {
-      const mineOpen = open.filter(orderNeedsMyBox);
-      const mineLate = mineOpen.filter(o => worstDelay(o) > 0);
-      mineEl.innerHTML = barHtml([
-        { l: 'My pending', v: mineOpen.length, c: 'gold' },
-        { l: 'My late', v: mineLate.length, c: 'late' },
-        { l: 'Others open', v: Math.max(0, open.length - mineOpen.length) }
-      ]);
+    // Delay overview
+    const chartDelay = $('#chart-delay');
+    if (chartDelay) {
+      const buckets = { 'On time': 0, '1-9 hrs late': 0, '10-45 hrs': 0, '45+ hrs': 0 };
+      open.forEach(o => {
+        const d = delayVal(o);
+        if (d <= 0) buckets['On time']++;
+        else if (d < 10) buckets['1-9 hrs late']++;
+        else if (d < 45) buckets['10-45 hrs']++;
+        else buckets['45+ hrs']++;
+      });
+      chartDelay.innerHTML = barHtml(Object.keys(buckets).map(k => ({
+        l: k, v: buckets[k], c: k === 'On time' ? 'ok' : 'hot'
+      })));
+    }
+
+    // My workload
+    const chartMine = $('#chart-mine');
+    if (chartMine) {
+      const mineByStage = {};
+      mine.forEach(o => {
+        const s = String(o.currentStage || 'OTHER').toUpperCase();
+        mineByStage[s] = (mineByStage[s] || 0) + 1;
+      });
+      const rows = Object.keys(mineByStage).map(s => ({
+        l: stageLabel(s), v: mineByStage[s]
+      }));
+      chartMine.innerHTML = rows.length ? barHtml(rows) : '<div class="empty-hint">No pending work for you</div>';
     }
 
     // Value by stage
-    const valEl = $('#chart-value');
-    if (valEl) {
-      const valBy = { box2: 0, box3: 0, box4: 0, box5: 0 };
+    const chartValue = $('#chart-value');
+    if (chartValue) {
+      const valBy = {};
       open.forEach(o => {
-        const st = currentStage(o);
-        if (valBy[st] !== undefined) valBy[st] += parseFloat(o.orderValue) || 0;
+        const s = String(o.currentStage || 'OTHER').toUpperCase();
+        valBy[s] = (valBy[s] || 0) + (parseFloat(o.orderValue) || 0);
       });
-      valEl.innerHTML = barHtml([
-        { l: 'Availability', v: Math.round(valBy.box2 / 1000), c: '' },
-        { l: 'Pack (₹k)', v: Math.round(valBy.box3 / 1000), c: 'gold' },
-        { l: 'Client (₹k)', v: Math.round(valBy.box4 / 1000), c: 'rose' },
-        { l: 'Shopify (₹k)', v: Math.round(valBy.box5 / 1000), c: 'ok' }
-      ]);
+      const rows = Object.keys(valBy).map(s => ({
+        l: stageLabel(s).slice(0, 12), v: Math.round(valBy[s] / 1000)
+      })).sort((a, b) => b.v - a.v).slice(0, 6);
+      chartValue.innerHTML = barHtml(rows);
     }
 
-    // Recent open orders
-    const recentEl = $('#recent-list');
-    if (recentEl) {
-      const recent = open.slice().sort((a, b) => String(b.entryTime || '').localeCompare(String(a.entryTime || ''))).slice(0, 8);
-      recentEl.innerHTML = recent.length
-        ? recent.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
-            <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
-            <span class="badge">${esc(STAGE_LABELS[currentStage(o)] || '')}</span></div>`).join('')
-        : '<div class="empty">No open orders</div>';
+    // Needs attention
+    const att = $('#attention-list');
+    if (att) {
+      const urgent = open.filter(o => delayVal(o) > 0)
+        .sort((a, b) => delayVal(b) - delayVal(a)).slice(0, 8);
+      att.innerHTML = urgent.length ? urgent.map(o => `
+        <div class="mini-row" onclick="App.openDetail('${esc(o.orderId)}')">
+          <span class="mini-id">${esc(o.orderId)}</span>
+          <span class="mini-name">${esc(o.clientName || '')}</span>
+          <span class="mini-stage">${esc(stageLabel(o.currentStage))}</span>
+          <span class="mini-delay late">+${delayVal(o).toFixed(0)}h</span>
+        </div>`).join('') : '<div class="empty-hint">Nothing urgent 🎉</div>';
     }
 
-    // Greeting
-    const g = $('#greeting');
-    if (g) {
-      const hr = new Date().getHours();
-      const hello = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
-      const nm = (state.user && (state.user.name || state.user.username)) || '';
-      g.textContent = hello + (nm ? ', ' + nm.split(' ')[0] : '') + ' 👋';
+    // Recent open
+    const recent = $('#recent-list');
+    if (recent) {
+      const rec = open.slice().sort((a, b) => String(b.entryTime).localeCompare(String(a.entryTime))).slice(0, 8);
+      recent.innerHTML = rec.map(o => `
+        <div class="mini-row" onclick="App.openDetail('${esc(o.orderId)}')">
+          <span class="mini-id">${esc(o.orderId)}</span>
+          <span class="mini-name">${esc(o.clientName || '')}</span>
+          <span class="mini-stage">${esc(stageLabel(o.currentStage))}</span>
+          <span class="mini-val">${money(o.orderValue)}</span>
+        </div>`).join('');
     }
   }
 
-  // ── FMS SHEET ──
-  function renderFmsSheet() {
-    const list = filteredList('#fms-filter', '#fms-search', '#fms-stage');
-    const sum = $('#fms-summary');
-    if (sum) {
-      const openN = list.filter(isOpen).length;
-      const lateN = list.filter(o => isOpen(o) && worstDelay(o) > 0).length;
-      const val = list.filter(isOpen).reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
-      sum.innerHTML = '<span class="chip">Showing <strong>' + list.length + '</strong></span>' +
-        '<span class="chip">Open <strong>' + openN + '</strong></span>' +
-        '<span class="chip">Late <strong>' + lateN + '</strong></span>' +
-        '<span class="chip">Value <strong>' + money(val) + '</strong></span>';
-    }
-    const body = $('#fms-body'); if (!body) return;
-    if (!list.length) {
-      body.innerHTML = '<tr><td colspan="14" class="empty">No orders</td></tr>';
-      return;
-    }
-    body.innerHTML = list.map(o => {
-      const b2p = boxCell(o.box2, false), b2a = boxCell(o.box2, true);
-      const b3p = boxCell(o.box3, false), b3a = boxCell(o.box3, true);
-      const b4p = boxCell(o.box4, false), b4a = boxCell(o.box4, true);
-      const b5p = boxCell(o.box5, false), b5a = boxCell(o.box5, true);
-      const d = worstDelay(o);
-      const mine = orderNeedsMyBox(o);
-      return `<tr class="${d > 0 ? 'row-late' : ''} ${mine ? 'row-mine' : ''}" onclick="App.openOrder('${esc(o.orderId)}')">
-        <td class="sticky-col"><strong>${esc(o.orderId)}</strong><br><small class="muted">${esc(o.shopifyNo || '')}</small></td>
-        <td>${esc(o.clientName || '—')}</td>
-        <td>${money(o.orderValue)}</td>
-        <td>${esc(o.city || '—')}</td>
-        <td><span class="stage-chip">${esc(STAGE_LABELS[currentStage(o)] || '—')}</span></td>
-        <td class="${b2p.cls}">${b2p.txt}</td><td class="${b2a.cls}">${b2a.txt}</td>
-        <td class="${b3p.cls}">${b3p.txt}</td><td class="${b3a.cls}">${b3a.txt}</td>
-        <td class="${b4p.cls}">${b4p.txt}</td><td class="${b4a.cls}">${b4a.txt}</td>
-        <td class="${b5p.cls}">${b5p.txt}</td><td class="${b5a.cls}">${b5a.txt}</td>
-        <td>${esc(o.overallStatus || '—')}</td>
-      </tr>`;
-    }).join('');
+  function barHtml(rows) {
+    if (!rows || !rows.length) return '<div class="empty-hint">No data</div>';
+    const max = Math.max(1, ...rows.map(r => r.v));
+    return rows.map(r => `
+      <div class="bar-row"><span>${esc(r.l)}</span>
+      <div class="bar-track"><div class="bar-fill ${r.c || ''}" style="width:${(r.v / max) * 100}%"></div></div>
+      <span>${r.v}</span></div>`).join('');
   }
+
+  /* ── My Work ─────────────────────────────────────────────────────────── */
 
   function renderMyWork() {
-    const list = state.orders.filter(orderNeedsMyBox);
-    const el = $('#mywork-list'); if (!el) return;
+    const list = filteredOrders('mine');
+    const el = $('#mywork-list');
+    if (!el) return;
     if (!list.length) {
-      el.innerHTML = '<div class="empty">Aapke liye koi pending kaam nahi hai</div>';
+      el.innerHTML = '<div class="empty-hint">No pending work assigned to you right now.</div>';
       return;
     }
-    el.innerHTML = list.map(o => {
-      const st = currentStage(o);
-      const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
-      const d = worstDelay(o);
-      const showBtn = n && canActOnBox(o, n);
-      return `<div class="work-card ${d > 0 ? 'late' : ''}">
-        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
-          <div class="k-id">${esc(o.orderId)} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
-          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
-          <div class="k-meta">${STAGE_LABELS[st] || st} ${d > 0 ? '· <span class="badge late">+' + d.toFixed(1) + 'h</span>' : ''}</div>
-        </div>
-        ${showBtn ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Done</button>` : ''}
-      </div>`;
-    }).join('');
+    el.innerHTML = list.map(o => workCard(o)).join('');
   }
 
-  function renderKanban() {
-    const list = filteredList('#kanban-filter', '#kanban-search');
-    const buckets = { box2: [], box3: [], box4: [], box5: [], done: [] };
-    list.forEach(o => { (buckets[currentStage(o)] || buckets.done).push(o); });
+  function workCard(o) {
+    const late = delayVal(o) > 0;
+    return `
+      <div class="work-card ${late ? 'late' : ''}" onclick="App.openDetail('${esc(o.orderId)}')">
+        <div class="wc-top">
+          <span class="wc-id">${esc(o.orderId)}</span>
+          <span class="wc-stage">${esc(stageLabel(o.currentStage))}</span>
+        </div>
+        <div class="wc-name">${esc(o.clientName || '—')}</div>
+        <div class="wc-meta">
+          <span>${money(o.orderValue)}</span>
+          <span>${esc(o.city || '')}</span>
+          ${late ? `<span class="late-badge">+${delayVal(o).toFixed(0)}h late</span>` : ''}
+        </div>
+      </div>`;
+  }
 
-    // Strict column visibility:
-    // - Admin / Viewer → all columns
-    // - Ops → only their allowed boxes + Done
-    let cols = BOX_COLS;
-    if (!isAdmin() && !isViewer()) {
-      cols = BOX_COLS.filter(c => c.key === 'done' || canDoBox(c.n));
-    }
+  /* ── Kanban ──────────────────────────────────────────────────────────── */
+
+  function renderKanban() {
+    const filter = ($('#kanban-filter') && $('#kanban-filter').value) || 'open';
+    const q = ($('#kanban-search') && $('#kanban-search').value) || '';
+    let list = filteredOrders(filter === 'mine' ? 'mine' : filter, q);
 
     const board = $('#kanban-board');
     if (!board) return;
 
-    board.innerHTML = cols.map(col => {
-      const cards = buckets[col.key] || [];
-      const colCanAct = col.key !== 'done' && canDoBox(col.n);
-
-      return `<div class="kanban-col ${colCanAct ? 'can-act' : ''}">
-        <div class="kanban-col-head">
-          <span>${col.label}</span>
-          <span class="count">${cards.length}</span>
-        </div>
-        <div class="kanban-col-body">
-          ${cards.length ? cards.map(o => {
-            const d = worstDelay(o);
-            const isMine = orderNeedsMyBox(o);
-            const showBtn = col.key !== 'done' && canActOnBox(o, col.n);
-            return `<div class="k-card ${d > 0 ? 'late' : ''} ${isMine ? 'mine' : ''}" onclick="App.openOrder('${esc(o.orderId)}')">
-              <div class="k-id">
-                ${esc(o.orderId)}
-                ${isMine ? '<span class="badge gold">Yours</span>' : ''}
-              </div>
-              <div class="k-client">${esc(o.clientName || '—')}</div>
-              <div class="k-meta">
-                <span>${money(o.orderValue)}</span>
-                <span>${d > 0 ? '<span class="badge late">+' + d.toFixed(1) + 'h</span>' : esc(o.city || '')}</span>
-              </div>
-              ${showBtn ?
-                `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${col.n})">Mark Done</button>`
-                : (col.key !== 'done' && isMine && !isPrevDone(o, col.n) ?
-                  `<div class="step-locked">🔒 Prev step pending</div>` : '')}
-            </div>`;
-          }).join('') : '<div class="empty" style="padding:16px 8px">Empty</div>'}
-        </div>
-      </div>`;
+    board.innerHTML = KANBAN_STAGES.map(stage => {
+      const colOrders = list.filter(o => String(o.currentStage || '').toUpperCase() === stage);
+      return `
+        <div class="kanban-col">
+          <div class="kanban-col-head">
+            <span>${esc(stageLabel(stage))}</span>
+            <span class="count">${colOrders.length}</span>
+          </div>
+          <div class="kanban-cards">
+            ${colOrders.map(o => `
+              <div class="kanban-card ${delayVal(o) > 0 ? 'late' : ''}" onclick="App.openDetail('${esc(o.orderId)}')">
+                <div class="kc-id">${esc(o.orderId)}</div>
+                <div class="kc-name">${esc(o.clientName || '')}</div>
+                <div class="kc-meta">${money(o.orderValue)} · ${esc(o.city || '')}</div>
+                ${delayVal(o) > 0 ? `<div class="kc-late">+${delayVal(o).toFixed(0)}h</div>` : ''}
+              </div>`).join('') || '<div class="empty-hint small">Empty</div>'}
+          </div>
+        </div>`;
     }).join('');
+  }
+
+  /* ── Due / Late ──────────────────────────────────────────────────────── */
+
+  function renderDue() {
+    const today = (window.Core && todayApprox()) || new Date().toISOString().slice(0, 10);
+    const list = (state.orders || []).filter(o => {
+      if (!isOpen(o)) return false;
+      const due = String(o.nextActionDue || '').slice(0, 10);
+      return due && due <= today;
+    }).sort((a, b) => delayVal(b) - delayVal(a));
+
+    const el = $('#due-list');
+    if (!el) return;
+    el.innerHTML = list.length ? list.map(workCard).join('') : '<div class="empty-hint">Nothing due today.</div>';
+  }
+
+  function todayApprox() {
+    try {
+      return new Date().toLocaleString('en-CA', { timeZone: 'Asia/Kolkata' }).slice(0, 10);
+    } catch (e) {
+      return new Date().toISOString().slice(0, 10);
+    }
   }
 
   function renderLate() {
-    // Staff: their late work first; Admin/Viewer: all late
-    let list = state.orders.filter(o => isOpen(o) && worstDelay(o) > 0)
-      .sort((a, b) => worstDelay(b) - worstDelay(a));
-    if (hasAnyBox() && !isAdmin()) {
-      const mine = list.filter(orderNeedsMyBox);
-      const other = list.filter(o => !orderNeedsMyBox(o));
-      list = mine.concat(other);
+    const list = filteredOrders('late').sort((a, b) => delayVal(b) - delayVal(a));
+    const el = $('#late-list');
+    if (!el) return;
+    el.innerHTML = list.length ? list.map(workCard).join('') : '<div class="empty-hint">No late orders 🎉</div>';
+  }
+
+  /* ── All Orders (FMS table) ──────────────────────────────────────────── */
+
+  function renderFmsSheet() {
+    const filter = ($('#fms-filter') && $('#fms-filter').value) || 'open';
+    const stage = ($('#fms-stage') && $('#fms-stage').value) || '';
+    const q = ($('#fms-search') && $('#fms-search').value) || '';
+    const list = filteredOrders(filter, q, stage);
+
+    const summary = $('#fms-summary');
+    if (summary) {
+      summary.textContent = list.length + ' order' + (list.length === 1 ? '' : 's');
     }
-    const el = $('#late-list'); if (!el) return;
-    if (!list.length) { el.innerHTML = '<div class="empty">No late orders 🎉</div>'; return; }
-    el.innerHTML = list.map(o => {
-      const st = currentStage(o);
-      const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
-      const d = worstDelay(o);
-      const mine = orderNeedsMyBox(o);
-      const showBtn = mine && n && canActOnBox(o, n);
-      return `<div class="work-card late">
-        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
-          <div class="k-id">${esc(o.orderId)} ${mine ? '<span class="badge gold">Yours</span>' : ''} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
-          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
-          <div class="k-meta">${STAGE_LABELS[st] || st} · <span class="badge late">+${d.toFixed(1)}h</span></div>
-        </div>
-        ${showBtn ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Done</button>` : ''}
-      </div>`;
-    }).join('');
+
+    const body = $('#fms-body');
+    if (!body) return;
+
+    body.innerHTML = list.map(o => {
+      const late = delayVal(o) > 0;
+      return `<tr class="${late ? 'row-late' : ''}" onclick="App.openDetail('${esc(o.orderId)}')">
+        <td class="sticky-col"><strong>${esc(o.orderId)}</strong></td>
+        <td>${esc(o.clientName || '')}</td>
+        <td>${money(o.orderValue)}</td>
+        <td>${esc(o.city || '')}</td>
+        <td><span class="stage-pill">${esc(stageLabel(o.currentStage))}</span></td>
+        <td>${esc(o.stockStatus || '—')}</td>
+        <td>${esc(o.vendorStatus || '—')}</td>
+        <td>${esc(o.clientDecision || '—')}</td>
+        <td>${esc(o.overallStatus || '')}</td>
+        <td class="${late ? 'late' : ''}">${delayVal(o) > 0 ? '+' + delayVal(o).toFixed(0) + 'h' : '—'}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="10" class="empty-hint">No orders match</td></tr>';
   }
 
-  function renderAdmin() {
-    $('#admin-users').innerHTML = `
-      <div class="mini-item"><span><strong>${esc(state.user.username)}</strong> · ${esc(state.user.role)}</span></div>
-      <div class="mini-item"><span>Boxes: <strong>all (2–5)</strong></span></div>
-      <div class="view-hint" style="margin-top:8px">Users sheet → Email, Role (Admin/Ops/Viewer), Col H = Allowed Boxes</div>`;
-    const open = state.orders.filter(isOpen);
-    $('#admin-orders').innerHTML = open.slice(0, 25).map(o => `
-      <div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
-        <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
-        <span class="badge">${esc(o.overallStatus || 'Open')}</span>
-      </div>`).join('') || '<div class="empty">No open</div>';
-  }
+  /* ── Detail Drawer ───────────────────────────────────────────────────── */
 
-  async function loadActivity() {
-    if (!isAdmin()) return;
-    const res = await rpc('getActivityLog', [80]);
-    if (!res || !res.success) {
-      $('#activity-body').innerHTML = '<tr><td colspan="6" class="empty">' + esc((res && res.error) || 'Failed') + '</td></tr>';
-      return;
-    }
-    const rows = res.rows || [];
-    $('#activity-body').innerHTML = rows.length
-      ? rows.map(r => `<tr><td>${esc(r.timestamp)}</td><td>${esc(r.username)}</td><td>${esc(r.action)}</td>
-          <td>${esc(r.orderId)}</td><td>${esc(r.box)}</td><td>${esc(r.details)}</td></tr>`).join('')
-      : '<tr><td colspan="6" class="empty">No activity</td></tr>';
-  }
-
-  async function createManualOrder() {
-    if (!canManual()) { toast('No access', 'error'); return; }
-    const client = ($('#m-client').value || '').trim();
-    if (!client) { toast('Client name required', 'error'); return; }
-    const payload = {
-      clientName: client, phone: ($('#m-phone').value || '').trim(),
-      email: ($('#m-email').value || '').trim(), city: ($('#m-city').value || '').trim(),
-      pincode: ($('#m-pincode').value || '').trim(), address: ($('#m-address').value || '').trim(),
-      orderValue: $('#m-value').value || 0, paymentMode: $('#m-pay').value || 'Prepaid',
-      notes: ($('#m-notes').value || '').trim(), items: []
-    };
-    const prod = ($('#m-product').value || '').trim();
-    if (prod) payload.items.push({ product: prod, qty: Number($('#m-qty').value) || 1, value: Number(payload.orderValue) || 0 });
-    setLoading(true);
-    try {
-      const res = await rpc('createManualOrder', [payload]);
-      if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
-      toast('Created: ' + res.orderId, 'ok');
-      ['m-client','m-phone','m-email','m-city','m-pincode','m-address','m-value','m-notes','m-product'].forEach(id => {
-        const el = $('#' + id); if (el) el.value = '';
-      });
-      await refresh();
-      if (res.orderId) openOrder(res.orderId);
-    } finally { setLoading(false); }
-  }
-
-  async function openOrder(orderId) {
+  async function openDetail(orderId) {
     setLoading(true);
     try {
       const res = await rpc('getOrderDetail', [orderId], 45000);
@@ -676,535 +596,290 @@
       }
       state.selected = res.order;
       renderDetail(res.order);
-      $('#detail-overlay').classList.add('open');
+      $('#detail-overlay').style.display = 'block';
       $('#detail-panel').classList.add('open');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
+
   function closeDetail() {
-    $('#detail-overlay').classList.remove('open');
+    $('#detail-overlay').style.display = 'none';
     $('#detail-panel').classList.remove('open');
     state.selected = null;
   }
 
-  /** Detail: only show actions user can perform */
   function renderDetail(o) {
-    const stage = currentStage(o);
-    $('#d-title').textContent = o.orderId + (o.shopifyNo ? '  ·  ' + o.shopifyNo : '');
-    $('#d-info').innerHTML = `
-      <div><label>Client</label><div>${esc(o.clientName || '—')}</div></div>
-      <div><label>Phone</label><div>${esc(o.phone || '—')}</div></div>
-      <div class="full"><label>Address</label><div>${esc(o.address || '—')}</div></div>
-      <div><label>City</label><div>${esc(o.city || '—')}</div></div>
-      <div><label>Value</label><div>${money(o.orderValue)}</div></div>
-      <div><label>Payment</label><div>${esc(o.paymentMode || '—')}</div></div>
-      <div><label>Status</label><div>${esc(o.overallStatus || '—')}</div></div>
-      <div><label>Current Step</label><div><strong>${esc(STAGE_LABELS[stage] || o.currentBox || '—')}</strong></div></div>
-      <div><label>Entry</label><div>${fmtDate(o.entryTime)}</div></div>
-      <div class="full"><label>Notes</label><div>${esc(o.notes || '—')}</div></div>`;
+    if (!o) return;
+    $('#d-title').textContent = o.orderId || 'Order';
 
-    // Admin edit — only Admin
+    const info = $('#d-info');
+    if (info) {
+      info.innerHTML = `
+        <div class="info-item"><label>Client</label><div>${esc(o.clientName || '—')}</div></div>
+        <div class="info-item"><label>Phone</label><div>${esc(o.phone || '—')}</div></div>
+        <div class="info-item"><label>City</label><div>${esc(o.city || '—')}</div></div>
+        <div class="info-item"><label>Value</label><div>${money(o.orderValue)}</div></div>
+        <div class="info-item"><label>Stage</label><div><strong>${esc(stageLabel(o.currentStage))}</strong></div></div>
+        <div class="info-item"><label>Status</label><div>${esc(o.overallStatus || '—')}</div></div>
+        <div class="info-item"><label>Stock</label><div>${esc(o.stockStatus || '—')}</div></div>
+        <div class="info-item"><label>Vendor</label><div>${esc(o.vendorStatus || '—')}</div></div>
+        <div class="info-item"><label>Client Decision</label><div>${esc(o.clientDecision || '—')}</div></div>
+        <div class="info-item"><label>Delay</label><div class="${delayVal(o) > 0 ? 'late' : ''}">${delayVal(o) > 0 ? '+' + delayVal(o).toFixed(1) + ' hrs' : 'On time'}</div></div>
+        <div class="info-item wide"><label>Address</label><div>${esc(o.address || '—')}</div></div>
+        <div class="info-item wide"><label>Notes</label><div>${esc(o.notes || '—')}</div></div>
+      `;
+    }
+
+    // Admin edit
     const adminEdit = $('#d-admin-edit');
-    if (isAdmin()) {
-      adminEdit.style.display = 'block';
-      $('#e-client').value = o.clientName || ''; $('#e-phone').value = o.phone || '';
-      $('#e-city').value = o.city || ''; $('#e-value').value = o.orderValue || '';
-      $('#e-notes').value = o.notes || ''; $('#e-status').value = o.overallStatus || '';
-    } else {
-      adminEdit.style.display = 'none';
+    if (adminEdit) {
+      adminEdit.style.display = isAdmin() ? 'block' : 'none';
+      if (isAdmin()) {
+        if ($('#e-client')) $('#e-client').value = o.clientName || '';
+        if ($('#e-phone')) $('#e-phone').value = o.phone || '';
+        if ($('#e-city')) $('#e-city').value = o.city || '';
+        if ($('#e-value')) $('#e-value').value = o.orderValue || '';
+        if ($('#e-notes')) $('#e-notes').value = o.notes || '';
+        if ($('#e-status')) $('#e-status').value = o.overallStatus || '';
+      }
     }
 
-    // Order Items — clear table style
-    const items = o.items || [];
-    if (items.length) {
-      $('#d-items').innerHTML = `
-        <div class="items-table">
-          <div class="items-head"><span>Product / SKU</span><span>Qty</span><span>Value</span></div>
-          ${items.map(it => `
-            <div class="item-row">
-              <span class="item-name">${esc(it.product || it.name || it.sku || '—')}</span>
-              <span class="item-qty">×${it.qty || 1}</span>
-              <span class="item-val">${money(it.value || it.price || 0)}</span>
-            </div>`).join('')}
-        </div>`;
-    } else {
-      $('#d-items').innerHTML = '<div class="empty">No line items</div>';
+    // Items
+    const itemsEl = $('#d-items');
+    if (itemsEl) {
+      const items = o.items || [];
+      itemsEl.innerHTML = items.length ? items.map(it => `
+        <div class="item-row">
+          <span>${esc(it.productName || it.product || '')}</span>
+          <span>×${esc(it.qty || 1)}</span>
+          <span>${money(it.value)}</span>
+        </div>`).join('') : '<div class="empty-hint">No items</div>';
     }
 
-    // Boxes: sequential — next step unlocks only after previous is Done
-    const boxes = [
-      { n: 2, label: BOX_FULL[2], data: o.box2, tat: '1 day TAT' },
-      { n: 3, label: BOX_FULL[3], data: o.box3, tat: '1 day TAT' },
-      { n: 4, label: BOX_FULL[4], data: o.box4, tat: 'Next day of dispatch' },
-      { n: 5, label: BOX_FULL[5], data: o.box5, tat: '4–5 days post dispatch' }
-    ];
-    $('#d-boxes').innerHTML = boxes.map(b => {
-      const d = b.data || {};
-      const isDone = String(d.status || '').toLowerCase() === 'done';
-      const delay = d.delay !== '' && d.delay != null ? parseFloat(d.delay) : null;
-      let delayTxt = '';
-      if (delay != null && !isNaN(delay))
-        delayTxt = delay > 0 ? `+${delay.toFixed(1)}h late` : (delay < 0 ? `${Math.abs(delay).toFixed(1)}h left` : 'on time');
+    // Decision / Action area (core of new flow)
+    renderActions(o);
 
-      const prevOk = isPrevDone(o, b.n);
-      const can = canDoBox(b.n);
-      const unlocked = canActOnBox(o, b.n);
+    // Events timeline
+    renderEvents(o);
 
-      let actionHtml = '';
-      if (isDone) {
-        actionHtml = `<div class="step-status done">✓ Completed</div>`;
-      } else if (unlocked) {
-        actionHtml = `<button class="btn-done" onclick="App.markDone(${b.n})">Mark Done</button>`;
-      } else if (!prevOk) {
-        actionHtml = `<div class="step-status locked">🔒 Pehle Box ${b.n - 1} complete karo</div>`;
-      } else if (hasAnyBox() && !can && !isViewer()) {
-        actionHtml = `<div class="step-status locked">Aapke access mein nahi</div>`;
-      } else if (!isViewer()) {
-        actionHtml = `<div class="step-status locked">Waiting</div>`;
-      }
-
-      const isCurrent = !isDone && prevOk;
-      return `<div class="box-row ${isDone ? 'done' : ''} ${isCurrent ? 'current' : ''} ${delay > 0 ? 'late' : ''}">
-        <div class="box-head">
-          <span>Step ${b.n - 1} — ${b.label}</span>
-          <span class="muted">${isDone ? 'Done' : (isCurrent ? 'Current' : (d.status || 'Locked'))}</span>
-        </div>
-        <div class="box-meta">
-          <span>TAT: ${b.tat}</span>
-          <span>Planned: ${fmtDate(d.planned)}</span>
-          <span>Actual: ${fmtDate(d.actual)}</span>
-          <span>${d.doneBy ? 'By: ' + esc(d.doneBy) : ''}</span>
-          <span class="${delay > 0 ? 'late' : ''}">${delayTxt}</span>
-        </div>
-        ${actionHtml}
-      </div>`;
-    }).join('');
-
-    // Courier: only if canCourier
-    const showCourier = canCourier();
-    const courierSection = $('#btn-save-courier') && $('#btn-save-courier').closest('.form-grid');
-    if (showCourier) {
-      const cVal = o.courier || '';
-      const sel = $('#d-courier');
-      if (sel) {
-        // match known options or leave blank
-        const known = ['Shree Maruti', 'Blue Dart Express'];
-        sel.value = known.indexOf(cVal) >= 0 ? cVal : (cVal ? cVal : '');
-        // if unknown courier stored, add temporary option
-        if (cVal && known.indexOf(cVal) < 0) {
-          let opt = Array.from(sel.options).find(o => o.value === cVal);
-          if (!opt) {
-            opt = document.createElement('option');
-            opt.value = cVal; opt.textContent = cVal;
-            sel.appendChild(opt);
-          }
-          sel.value = cVal;
-        }
-      }
-      $('#d-awb').value = o.awb || '';
-      $('#d-auto').value = String(o.courierAutoUpdate || '').toLowerCase() === 'yes' ? 'Yes' : 'No';
-      if (sel) sel.disabled = false;
-      $('#d-awb').disabled = false;
-      $('#btn-save-courier').style.display = '';
-      onCourierChange();
-      // show the h3 + form
-      const h3s = $$('#detail-panel h3');
-      h3s.forEach(h => {
-        const t = h.textContent.trim();
-        if (t === 'Courier' || t.indexOf('Courier') === 0) h.style.display = '';
-      });
-      if (courierSection) courierSection.style.display = '';
-    } else {
-      // read-only for viewer / no-box users
-      const sel = $('#d-courier');
-      const cVal = o.courier || '';
-      if (sel) {
-        const known = ['Shree Maruti', 'Blue Dart Express'];
-        if (cVal && known.indexOf(cVal) < 0) {
-          let opt = Array.from(sel.options).find(o => o.value === cVal);
-          if (!opt) {
-            opt = document.createElement('option');
-            opt.value = cVal; opt.textContent = cVal;
-            sel.appendChild(opt);
-          }
-        }
-        sel.value = cVal || '';
-        sel.disabled = true;
-      }
-      $('#d-awb').value = o.awb || '';
-      $('#d-auto').value = String(o.courierAutoUpdate || '').toLowerCase() === 'yes' ? 'Yes' : 'No';
-      $('#d-awb').disabled = true;
-      $('#d-auto').disabled = true;
-      $('#btn-save-courier').style.display = 'none';
-    }
+    // Courier
+    if ($('#d-courier')) $('#d-courier').value = o.courier || '';
+    if ($('#d-awb')) $('#d-awb').value = o.awb || '';
+    if ($('#d-auto')) $('#d-auto').value = (String(o.courierAutoUpdate || '').toLowerCase() === 'yes') ? 'Yes' : 'No';
   }
 
-  async function markDone(boxNo) {
-    if (!state.selected) return;
-    if (!canDoBox(boxNo)) { toast('No access for this step', 'error'); return; }
-    if (!isPrevDone(state.selected, boxNo)) {
-      toast('Pehle previous step complete karo (Box ' + (boxNo - 1) + ')', 'error');
+  function renderActions(o) {
+    const box = $('#d-boxes');
+    if (!box) return;
+
+    const stage = String(o.currentStage || '').toUpperCase();
+    const canAct = canDoStage(stage) && isOpen(o) && !isTerminal(stage);
+
+    let html = `<div class="action-current">Current: <strong>${esc(stageLabel(stage))}</strong></div>`;
+
+    if (!canAct) {
+      if (isTerminal(stage)) {
+        html += `<div class="empty-hint">Order is ${esc(stageLabel(stage))} — no further actions.</div>`;
+      } else {
+        html += `<div class="empty-hint">You are not assigned to act on this stage.</div>`;
+      }
+      box.innerHTML = html;
       return;
     }
-    if (isBoxDone(state.selected, boxNo)) { toast('Already done', 'ok'); return; }
-    if (!confirm('Mark Step complete?\n' + (BOX_FULL[boxNo] || 'Box ' + boxNo))) return;
-    setLoading(true);
-    try {
-      const res = await rpc('markBoxDone', [state.selected.orderId, boxNo, ''], 45000);
-      if (!res || !res.success) {
-        toast((res && res.error) || 'Failed — try again', 'error');
-        return;
-      }
-      toast((BOX_FULL[boxNo] || 'Box ' + boxNo) + ' ✓ Done', 'ok');
-      await openOrder(state.selected.orderId);
-      await refresh();
-    } finally { setLoading(false); }
+
+    // Decision buttons based on current stage
+    html += '<div class="action-buttons">';
+
+    if (stage === 'STOCK_CHECK') {
+      html += `
+        <button class="btn primary" onclick="App.doDecision('READY_PACKING','Available')">✓ Stock Available</button>
+        <button class="btn warn" onclick="App.doDecision('VENDOR_CONTACT','Not Available')">✗ Not Available → Vendor</button>`;
+    }
+    else if (stage === 'VENDOR_CONTACT') {
+      html += `
+        <button class="btn primary" onclick="App.doDecision('VENDOR_ARRANGE','Within_1_Week')">Within 1 week</button>
+        <button class="btn warn" onclick="App.doDecision('CLIENT_DECISION','More_Than_1_Week')">More than 1 week</button>
+        <button class="btn danger" onclick="App.doDecision('CLIENT_DECISION','Unavailable')">Unavailable</button>`;
+    }
+    else if (stage === 'VENDOR_ARRANGE') {
+      html += `
+        <button class="btn primary" onclick="App.doDecision('READY_PACKING','Arranged')">Product Arranged → Packing</button>
+        <button class="btn" onclick="App.doDecision('VENDOR_FOLLOWUP','')">Move to Follow-up</button>`;
+    }
+    else if (stage === 'VENDOR_FOLLOWUP') {
+      html += `
+        <button class="btn primary" onclick="App.doDecision('READY_PACKING','Received')">✓ Product Received</button>
+        <button class="btn" onclick="App.doDecision('VENDOR_FOLLOWUP','')">Log Follow-up (still waiting)</button>
+        <button class="btn warn" onclick="App.doDecision('CLIENT_DECISION','')">Back to Client Decision</button>`;
+    }
+    else if (stage === 'CLIENT_DECISION') {
+      html += `
+        <button class="btn primary" onclick="App.doDecision('READY_PACKING','Similar_Product')">Similar Product Accepted</button>
+        <button class="btn danger" onclick="App.doDecision('REFUND_PROCESS','Refund')">Request Refund</button>
+        <button class="btn" onclick="App.doDecision('VENDOR_FOLLOWUP','Wait')">Client Will Wait</button>`;
+    }
+    else if (stage === 'READY_PACKING') {
+      html += `<button class="btn primary" onclick="App.doDecision('PACKING','')">Start Packing</button>`;
+    }
+    else if (stage === 'PACKING') {
+      html += `<button class="btn primary" onclick="App.doDecision('DISPATCH','')">Packed → Dispatch</button>`;
+    }
+    else if (stage === 'DISPATCH') {
+      html += `<button class="btn primary" onclick="App.doDecision('TRACKING_UPDATE','')">Dispatched → Update Tracking</button>`;
+    }
+    else if (stage === 'TRACKING_UPDATE') {
+      html += `<button class="btn primary" onclick="App.doDecision('DISPATCHED','')">Mark Completed</button>`;
+    }
+    else if (stage === 'REFUND_PROCESS') {
+      html += `<button class="btn danger" onclick="App.doDecision('REFUNDED','Processed')">Refund Done</button>`;
+    }
+    else if (stage === 'DELAYED') {
+      html += `<button class="btn" onclick="App.doDecision('CLIENT_DECISION','')">Contact Client</button>`;
+    }
+
+    html += '</div>';
+
+    // Notes input for the action
+    html += `
+      <div class="action-notes">
+        <input id="action-notes" type="text" placeholder="Optional notes for this action…" />
+        <input id="action-related" type="text" placeholder="Related info (vendor name / similar product / amount)…" />
+      </div>`;
+
+    box.innerHTML = html;
   }
-  async function quickDone(orderId, boxNo) {
-    if (!canDoBox(boxNo)) { toast('No access', 'error'); return; }
-    // For quick action from board, we still need sequential check
-    const o = state.orders.find(x => String(x.orderId) === String(orderId));
-    if (o && !isPrevDone(o, boxNo)) {
-      toast('Pehle previous step complete karo', 'error');
+
+  function renderEvents(o) {
+    // We put timeline under d-boxes or a dedicated area if present
+    let timeline = $('#d-timeline');
+    if (!timeline) {
+      // create if missing
+      const parent = $('#detail-panel .drawer-body');
+      if (parent) {
+        const h = document.createElement('h3');
+        h.textContent = 'History';
+        timeline = document.createElement('div');
+        timeline.id = 'd-timeline';
+        timeline.className = 'timeline';
+        parent.appendChild(h);
+        parent.appendChild(timeline);
+      }
+    }
+    if (!timeline) return;
+
+    const events = o.events || [];
+    if (!events.length) {
+      timeline.innerHTML = '<div class="empty-hint">No events yet</div>';
       return;
     }
-    if (o && isBoxDone(o, boxNo)) { toast('Already done', 'ok'); return; }
-    if (!confirm('Mark Step complete?\n' + (BOX_FULL[boxNo] || 'Box ' + boxNo))) return;
-    setLoading(true);
-    try {
-      const res = await rpc('markBoxDone', [orderId, boxNo, ''], 45000);
-      if (!res || !res.success) {
-        toast((res && res.error) || 'Failed — try again', 'error');
-        return;
-      }
-      toast('Done ✓', 'ok');
-      await refresh();
-    } finally { setLoading(false); }
-  }
-  function onCourierChange() {
-    const courier = ($('#d-courier') && $('#d-courier').value) || '';
-    const auto = $('#d-auto');
-    if (!auto) return;
-    if (courier === 'Shree Maruti') {
-      auto.disabled = false;
-      // keep current selection
-    } else if (courier === 'Blue Dart Express') {
-      auto.value = 'No';
-      auto.disabled = true;
-    } else {
-      auto.disabled = false;
-    }
-  }
-  async function saveCourier() {
-    if (!state.selected || !canCourier()) { toast('No access', 'error'); return; }
-    const courier = ($('#d-courier') && $('#d-courier').value || '').trim();
-    if (!courier) { toast('Select courier', 'error'); return; }
-    let autoVal = ($('#d-auto') && $('#d-auto').value) || 'No';
-    if (courier === 'Blue Dart Express') autoVal = 'No';
-    setLoading(true);
-    try {
-      const res = await rpc('updateCourier', [
-        state.selected.orderId, courier,
-        $('#d-awb').value.trim(), autoVal
-      ]);
-      if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
-      toast('Courier saved', 'ok');
-      await openOrder(state.selected.orderId);
-      await refresh();
-    } finally { setLoading(false); }
-  }
-  async function saveOrderEdit() {
-    if (!state.selected || !isAdmin()) { toast('Admin only', 'error'); return; }
-    setLoading(true);
-    try {
-      const res = await rpc('updateOrder', [state.selected.orderId, {
-        clientName: $('#e-client').value.trim(), phone: $('#e-phone').value.trim(),
-        city: $('#e-city').value.trim(), orderValue: $('#e-value').value,
-        notes: $('#e-notes').value.trim(), overallStatus: $('#e-status').value
-      }]);
-      if (!res || !res.success) { toast((res && res.error) || 'Failed', 'error'); return; }
-      toast('Updated', 'ok');
-      await openOrder(state.selected.orderId);
-      await refresh();
-    } finally { setLoading(false); }
-  }
-
-
-
-  function isDueToday(o) {
-    if (!isOpen(o)) return false;
-    const today = new Date().toISOString().slice(0, 10);
-    const boxes = [o.box2, o.box3, o.box4, o.box5];
-    for (let i = 0; i < boxes.length; i++) {
-      const b = boxes[i];
-      if (!b || String(b.status || '').toLowerCase() === 'done') continue;
-      const pln = String(b.planned || '').slice(0, 10);
-      if (pln && pln <= today) return true;
-    }
-    return false;
-  }
-
-  function renderDue() {
-    const list = state.orders.filter(isDueToday).sort((a, b) => worstDelay(b) - worstDelay(a));
-    const el = $('#due-list'); if (!el) return;
-    if (!list.length) { el.innerHTML = '<div class="empty">Nothing due today 🎉</div>'; return; }
-    el.innerHTML = list.map(o => {
-      const st = currentStage(o);
-      const n = { box2: 2, box3: 3, box4: 4, box5: 5 }[st];
-      const d = worstDelay(o);
-      const showBtn = n && canActOnBox(o, n);
-      return `<div class="work-card ${d > 0 ? 'late' : ''}">
-        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
-          <div class="k-id">${esc(o.orderId)} <span class="muted">${esc(o.shopifyNo || '')}</span></div>
-          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
-          <div class="k-meta">${STAGE_LABELS[st] || st} ${d > 0 ? '· <span class="badge late">+' + d.toFixed(1) + 'h</span>' : ''}</div>
-        </div>
-        ${showBtn ? `<button class="btn-done" onclick="event.stopPropagation();App.quickDone('${esc(o.orderId)}',${n})">Mark Done</button>` : ''}
-      </div>`;
-    }).join('');
-  }
-
-  function renderCourier() {
-    const open = state.orders.filter(isOpen);
-    const withAwb = open.filter(o => o.awb || o.courier);
-    const noAwb = open.filter(o => !o.awb && !o.courier);
-    const auto = open.filter(o => String(o.courierAutoUpdate || '').toLowerCase() === 'yes');
-    const cs = $('#courier-stats');
-    if (cs) {
-      cs.innerHTML = `
-        <div class="stat-card"><div class="label">Open</div><div class="value">${open.length}</div></div>
-        <div class="stat-card ok"><div class="label">With AWB</div><div class="value">${withAwb.length}</div></div>
-        <div class="stat-card late"><div class="label">No courier</div><div class="value">${noAwb.length}</div></div>
-        <div class="stat-card gold"><div class="label">Auto-update</div><div class="value">${auto.length}</div></div>`;
-    }
-    const el = $('#courier-list'); if (!el) return;
-    const sorted = open.slice().sort((a, b) => {
-      const aa = (a.awb || a.courier) ? 1 : 0;
-      const bb = (b.awb || b.courier) ? 1 : 0;
-      return aa - bb;
-    });
-    el.innerHTML = sorted.length ? sorted.map(o => {
-      const has = !!(o.awb || o.courier);
-      return `<div class="work-card ${has ? '' : 'late'}">
-        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
-          <div class="k-id">${esc(o.orderId)} ${has ? '<span class="badge ok">Tracked</span>' : '<span class="badge late">No AWB</span>'}</div>
-          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
-          <div class="k-meta">${esc(o.courier || '—')} · ${esc(o.awb || 'no AWB')} · Auto: ${esc(o.courierAutoUpdate || 'No')}</div>
-        </div>
-      </div>`;
-    }).join('') : '<div class="empty">No open orders</div>';
-  }
-
-  function renderCities() {
-    const open = state.orders.filter(isOpen);
-    const map = {};
-    open.forEach(o => {
-      const c = (o.city || 'Unknown').trim() || 'Unknown';
-      if (!map[c]) map[c] = { n: 0, v: 0, orders: [] };
-      map[c].n++;
-      map[c].v += parseFloat(o.orderValue) || 0;
-      map[c].orders.push(o);
-    });
-    const cities = Object.keys(map).sort((a, b) => map[b].v - map[a].v);
-    const el = $('#cities-list'); if (!el) return;
-    if (!cities.length) { el.innerHTML = '<div class="empty">No open orders</div>'; return; }
-    el.innerHTML = cities.map(c => {
-      const g = map[c];
-      const rows = g.orders.slice(0, 6).map(o =>
-        `<div class="city-ord" onclick="App.openOrder('${esc(o.orderId)}')"><strong>${esc(o.orderId)}</strong> · ${money(o.orderValue)} · ${esc(STAGE_LABELS[currentStage(o)] || '')}</div>`
-      ).join('');
-      return `<div class="city-card">
-        <h4>${esc(c)}</h4>
-        <div class="city-meta">${g.n} orders · ${money(g.v)}</div>
-        <div class="city-orders">${rows}${g.orders.length > 6 ? '<div class="muted" style="font-size:11px;padding:4px">+' + (g.orders.length - 6) + ' more</div>' : ''}</div>
-      </div>`;
-    }).join('');
-  }
-
-  function renderDone() {
-    const list = state.orders.filter(o => !isOpen(o))
-      .sort((a, b) => String(b.entryTime || '').localeCompare(String(a.entryTime || '')))
-      .slice(0, 40);
-    const el = $('#done-list'); if (!el) return;
-    if (!list.length) { el.innerHTML = '<div class="empty">No completed orders in list</div>'; return; }
-    el.innerHTML = list.map(o => `
-      <div class="work-card">
-        <div class="work-main" onclick="App.openOrder('${esc(o.orderId)}')">
-          <div class="k-id">${esc(o.orderId)} <span class="badge ok">${esc(o.overallStatus || 'Done')}</span></div>
-          <div class="k-client">${esc(o.clientName || '—')} · ${money(o.orderValue)}</div>
-          <div class="k-meta">${esc(o.city || '')} · ${fmtDate(o.entryTime)}</div>
+    timeline.innerHTML = events.map(ev => `
+      <div class="tl-item">
+        <div class="tl-time">${esc(shortDate(ev.eventTimestamp))}</div>
+        <div class="tl-body">
+          <strong>${esc(ev.fromStage || '—')} → ${esc(ev.toStage || '—')}</strong>
+          ${ev.decisionOrOutcome ? `<span class="tl-decision">${esc(ev.decisionOrOutcome)}</span>` : ''}
+          <div class="tl-meta">${esc(ev.doneBy || '')} ${ev.notes ? '· ' + esc(ev.notes) : ''}</div>
         </div>
       </div>`).join('');
   }
 
-  function renderInsights() {
-    const open = state.orders.filter(isOpen);
-    const late = open.filter(o => worstDelay(o) > 0);
-    const val = open.reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
-    const mine = open.filter(orderNeedsMyBox);
-    const noCourier = open.filter(o => !o.awb && !o.courier);
-    const is = $('#insights-stats');
-    if (is) {
-      is.innerHTML = `
-        <div class="stat-card"><div class="label">Open</div><div class="value">${open.length}</div></div>
-        <div class="stat-card late"><div class="label">Late</div><div class="value">${late.length}</div></div>
-        <div class="stat-card gold"><div class="label">My work</div><div class="value">${mine.length}</div></div>
-        <div class="stat-card ok"><div class="label">Open value</div><div class="value" style="font-size:18px">${money(val)}</div></div>`;
-    }
+  /* ── Actions ─────────────────────────────────────────────────────────── */
 
-    const counts = { box2: 0, box3: 0, box4: 0, box5: 0 };
-    const valBy = { box2: 0, box3: 0, box4: 0, box5: 0 };
-    open.forEach(o => {
-      const st = currentStage(o);
-      if (counts[st] !== undefined) {
-        counts[st]++;
-        valBy[st] += parseFloat(o.orderValue) || 0;
+  async function doDecision(toStage, decisionOrOutcome) {
+    const o = state.selected;
+    if (!o) return;
+    const notes = ($('#action-notes') && $('#action-notes').value) || '';
+    const related = ($('#action-related') && $('#action-related').value) || '';
+
+    const label = stageLabel(toStage) + (decisionOrOutcome ? ' (' + decisionOrOutcome + ')' : '');
+    if (!confirm('Confirm: move to ' + label + '?')) return;
+
+    setLoading(true);
+    try {
+      const res = await rpc('recordStageEvent', [
+        o.orderId,
+        toStage,
+        decisionOrOutcome || '',
+        notes,
+        related
+      ], 45000);
+
+      if (!res || !res.success) {
+        toast((res && res.error) || 'Action failed', 'error');
+        return;
       }
-    });
-    const mix = $('#insights-mix');
-    if (mix) {
-      mix.innerHTML = barHtml([
-        { l: 'Availability', v: counts.box2 },
-        { l: 'Pack', v: counts.box3, c: 'gold' },
-        { l: 'Client', v: counts.box4, c: 'rose' },
-        { l: 'Shopify', v: counts.box5, c: 'ok' }
-      ]);
-    }
-    let ontime = 0, mild = 0, high = 0;
-    open.forEach(o => {
-      const d = worstDelay(o);
-      if (d <= 0) ontime++; else if (d < 9) mild++; else high++;
-    });
-    const idel = $('#insights-delay');
-    if (idel) {
-      idel.innerHTML = barHtml([
-        { l: 'On time', v: ontime, c: 'ok' },
-        { l: '< 1d late', v: mild, c: 'gold' },
-        { l: '≥ 1d late', v: high, c: 'late' }
-      ]);
-    }
-    const ivs = $('#insights-valstage');
-    if (ivs) {
-      ivs.innerHTML = barHtml([
-        { l: 'Avail', v: Math.round(valBy.box2 / 1000) },
-        { l: 'Pack', v: Math.round(valBy.box3 / 1000), c: 'gold' },
-        { l: 'Client', v: Math.round(valBy.box4 / 1000), c: 'rose' },
-        { l: 'Shopify', v: Math.round(valBy.box5 / 1000), c: 'ok' }
-      ]);
-    }
-    const risk = $('#insights-risk');
-    if (risk) {
-      risk.innerHTML = barHtml([
-        { l: 'Late', v: late.length, c: 'late' },
-        { l: 'No AWB', v: noCourier.length, c: 'gold' },
-        { l: 'My pending', v: mine.length },
-        { l: 'On time', v: ontime, c: 'ok' }
-      ]);
-    }
-
-    // Top clients — rich rows
-    const clients = {};
-    open.forEach(o => {
-      const n = (o.clientName || 'Unknown').trim() || 'Unknown';
-      if (!clients[n]) clients[n] = { v: 0, n: 0, cities: {}, stages: {} };
-      clients[n].v += parseFloat(o.orderValue) || 0;
-      clients[n].n += 1;
-      const city = (o.city || '—').trim() || '—';
-      clients[n].cities[city] = true;
-      const st = currentStage(o);
-      clients[n].stages[st] = (clients[n].stages[st] || 0) + 1;
-    });
-    const top = Object.keys(clients).sort((a, b) => clients[b].v - clients[a].v).slice(0, 12);
-    const ic = $('#insights-clients');
-    if (ic) {
-      ic.innerHTML = top.length
-        ? top.map(n => {
-            const c = clients[n];
-            const cities = Object.keys(c.cities).slice(0, 2).join(', ');
-            return `<div class="client-row">
-              <span class="cr-name" title="${esc(n)}">${esc(n)}</span>
-              <span class="cr-orders">${c.n}</span>
-              <span class="cr-city" title="${esc(cities)}">${esc(cities || '—')}</span>
-              <span class="cr-val"><strong>${money(c.v)}</strong></span>
-            </div>`;
-          }).join('')
-        : '<div class="empty">No open clients</div>';
-    }
-
-    const topOrd = open.slice().sort((a, b) => (parseFloat(b.orderValue) || 0) - (parseFloat(a.orderValue) || 0)).slice(0, 8);
-    const ito = $('#insights-toporders');
-    if (ito) {
-      ito.innerHTML = topOrd.length
-        ? topOrd.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
-            <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')} · ${esc(o.city || '')}</span>
-            <span><strong>${money(o.orderValue)}</strong> · ${esc(STAGE_LABELS[currentStage(o)] || '')}</span>
-          </div>`).join('')
-        : '<div class="empty">No open orders</div>';
-    }
-
-    const lateList = late.slice().sort((a, b) => worstDelay(b) - worstDelay(a)).slice(0, 8);
-    const il = $('#insights-late');
-    if (il) {
-      il.innerHTML = lateList.length
-        ? lateList.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
-            <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
-            <span class="badge late">+${worstDelay(o).toFixed(1)}h · ${esc(STAGE_LABELS[currentStage(o)] || '')}</span>
-          </div>`).join('')
-        : '<div class="empty">No late orders 🎉</div>';
+      toast('Updated → ' + stageLabel(toStage), 'ok');
+      await refresh(true);
+      // reload detail
+      await openDetail(o.orderId);
+    } finally {
+      setLoading(false);
     }
   }
 
-  function renderPipeline() {
-    const open = state.orders.filter(isOpen);
-    const stages = [
-      { key: 'box2', label: 'Availability' },
-      { key: 'box3', label: 'Pack & Dispatch' },
-      { key: 'box4', label: 'Client Update' },
-      { key: 'box5', label: 'Shopify Status' }
-    ];
-    const buckets = {};
-    stages.forEach(s => { buckets[s.key] = { n: 0, v: 0 }; });
-    open.forEach(o => {
-      const st = currentStage(o);
-      if (buckets[st]) {
-        buckets[st].n++;
-        buckets[st].v += parseFloat(o.orderValue) || 0;
+  async function saveCourier() {
+    const o = state.selected;
+    if (!o) return;
+    const courier = $('#d-courier') ? $('#d-courier').value : '';
+    const awb = $('#d-awb') ? $('#d-awb').value : '';
+    const auto = $('#d-auto') ? $('#d-auto').value : 'No';
+
+    setLoading(true);
+    try {
+      const res = await rpc('updateCourier', [o.orderId, courier, awb, auto]);
+      if (!res || !res.success) {
+        toast((res && res.error) || 'Save failed', 'error');
+        return;
       }
-    });
-    const totalV = open.reduce((s, o) => s + (parseFloat(o.orderValue) || 0), 0);
-    const ps = $('#pipeline-stats');
-    if (ps) {
-      ps.innerHTML = stages.map(s =>
-        `<div class="stat-card"><div class="label">${s.label}</div><div class="value" style="font-size:20px">${money(buckets[s.key].v)}</div><div class="muted" style="font-size:11px;margin-top:4px">${buckets[s.key].n} orders</div></div>`
-      ).join('') + `<div class="stat-card ok"><div class="label">Total open</div><div class="value" style="font-size:20px">${money(totalV)}</div><div class="muted" style="font-size:11px;margin-top:4px">${open.length} orders</div></div>`;
-    }
-    const ch = $('#pipeline-chart');
-    if (ch) {
-      ch.innerHTML = barHtml(stages.map((s, i) => ({
-        l: s.label,
-        v: Math.round(buckets[s.key].v / 1000),
-        c: ['', 'gold', 'rose', 'ok'][i]
-      })));
-    }
-    const pl = $('#pipeline-list');
-    if (pl) {
-      const top = open.slice().sort((a, b) => (parseFloat(b.orderValue) || 0) - (parseFloat(a.orderValue) || 0)).slice(0, 12);
-      pl.innerHTML = top.length
-        ? top.map(o => `<div class="mini-item" onclick="App.openOrder('${esc(o.orderId)}')">
-            <span><strong>${esc(o.orderId)}</strong> · ${esc(o.clientName || '')}</span>
-            <span><strong>${money(o.orderValue)}</strong> · ${esc(STAGE_LABELS[currentStage(o)] || '')}</span></div>`).join('')
-        : '<div class="empty">No open orders</div>';
+      toast('Courier saved', 'ok');
+      await refresh(true);
+      await openDetail(o.orderId);
+    } finally {
+      setLoading(false);
     }
   }
 
-  function esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  async function saveOrderEdit() {
+    if (!isAdmin() || !state.selected) return;
+    const fields = {
+      clientName: $('#e-client') ? $('#e-client').value : undefined,
+      phone: $('#e-phone') ? $('#e-phone').value : undefined,
+      city: $('#e-city') ? $('#e-city').value : undefined,
+      orderValue: $('#e-value') ? $('#e-value').value : undefined,
+      notes: $('#e-notes') ? $('#e-notes').value : undefined,
+      overallStatus: $('#e-status') ? $('#e-status').value : undefined
+    };
+    setLoading(true);
+    try {
+      const res = await rpc('updateOrder', [state.selected.orderId, fields]);
+      if (!res || !res.success) {
+        toast((res && res.error) || 'Save failed', 'error');
+        return;
+      }
+      toast('Order updated', 'ok');
+      await refresh(true);
+      await openDetail(state.selected.orderId);
+    } finally {
+      setLoading(false);
+    }
   }
+
+  function onCourierChange() { /* optional hook */ }
+
+  /* ── Public API ──────────────────────────────────────────────────────── */
 
   window.App = {
-    boot, doLogin, doLogout, refresh, setView, toggleSidebar, toggleCollapse, globalSearch, toggleTheme, onCourierChange,
-    openOrder, closeDetail, markDone, quickDone, saveCourier, saveOrderEdit,
+    boot, doLogin, doLogout, refresh, setView,
+    toggleSidebar, toggleCollapse, toggleTheme, globalSearch,
+    openDetail, closeDetail, doDecision,
+    saveCourier, saveOrderEdit, onCourierChange,
     renderKanban, renderFmsSheet
   };
-  document.addEventListener('DOMContentLoaded', boot);
+
+  // Init
+  document.addEventListener('DOMContentLoaded', function () {
+    initTheme();
+    boot();
+  });
 })();
