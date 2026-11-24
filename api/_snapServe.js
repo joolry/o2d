@@ -1,4 +1,4 @@
-// api/_snapServe.js — Filter snapshot for the requesting user (Order FMS)
+// api/_snapServe.js
 function fromSnapshot(snap, fn, args, user) {
   if (!snap || !snap.success) return null;
 
@@ -6,29 +6,36 @@ function fromSnapshot(snap, fn, args, user) {
   const role = (user && user.role) || 'Ops';
 
   if (fn === 'getBootData') {
+    const openCount = (snap.orders || []).filter(o => {
+      const s = String(o.overallStatus || '').toLowerCase();
+      return s !== 'completed' && s !== 'refunded' && s !== 'cancelled';
+    }).length;
     return {
       success: true,
       user: user,
       today: snap.today,
       config: snap.config || {},
-      steps: snap.steps || [],
-      openCount: (snap.orders || []).filter(o => {
-        const s = String(o.overallStatus || '').toLowerCase();
-        return s !== 'closed' && s !== 'done';
-      }).length
+      stages: snap.stages || [],          // ← new
+      openCount
     };
   }
 
   if (fn === 'getOrders') {
     const filter = (args && args[0]) || 'open';
     let list = snap.orders || [];
+
     if (filter === 'open') {
       list = list.filter(o => {
         const s = String(o.overallStatus || '').toLowerCase();
-        return s !== 'closed' && s !== 'done';
+        return s !== 'completed' && s !== 'refunded' && s !== 'cancelled';
       });
+    } else if (filter === 'completed') {
+      list = list.filter(o => String(o.overallStatus || '').toLowerCase() === 'completed');
+    } else if (filter === 'refunded') {
+      list = list.filter(o => String(o.overallStatus || '').toLowerCase() === 'refunded');
     }
-    // role filter can be expanded later
+    // 'all' returns everything
+
     return { success: true, orders: list, count: list.length };
   }
 
@@ -37,11 +44,12 @@ function fromSnapshot(snap, fn, args, user) {
     const order = (snap.orders || []).find(o => String(o.orderId) === String(orderId));
     if (!order) return { success: false, error: 'Order not found' };
     const items = (snap.items || []).filter(i => String(i.orderId) === String(orderId));
-    return { success: true, order: Object.assign({}, order, { items }) };
+    const events = (snap.events || []).filter(e => String(e.orderId) === String(orderId));
+    return { success: true, order: Object.assign({}, order, { items, events }) };
   }
 
-  if (fn === 'getSteps') {
-    return { success: true, steps: snap.steps || [] };
+  if (fn === 'getStages' || fn === 'getSteps') {
+    return { success: true, stages: snap.stages || [] };
   }
 
   if (fn === 'getConfig') {
@@ -54,19 +62,3 @@ function fromSnapshot(snap, fn, args, user) {
 
   return null; // fall through to live GAS
 }
-
-function coverage(snap) {
-  return {
-    orders: (snap.orders || []).length,
-    items: (snap.items || []).length,
-    users: (snap.users || []).length,
-    today: snap.today || null
-  };
-}
-
-function normDate(d) {
-  if (!d) return '';
-  return String(d).slice(0, 10);
-}
-
-module.exports = { fromSnapshot, coverage, normDate };
