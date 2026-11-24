@@ -2,9 +2,6 @@
 function fromSnapshot(snap, fn, args, user) {
   if (!snap || !snap.success) return null;
 
-  const username = (user && user.username) ? String(user.username).toLowerCase() : '';
-  const role = (user && user.role) || 'Ops';
-
   if (fn === 'getBootData') {
     const openCount = (snap.orders || []).filter(o => {
       const s = String(o.overallStatus || '').toLowerCase();
@@ -15,7 +12,7 @@ function fromSnapshot(snap, fn, args, user) {
       user: user,
       today: snap.today,
       config: snap.config || {},
-      stages: snap.stages || [],          // ← new
+      stages: snap.stages || [],
       openCount
     };
   }
@@ -34,7 +31,6 @@ function fromSnapshot(snap, fn, args, user) {
     } else if (filter === 'refunded') {
       list = list.filter(o => String(o.overallStatus || '').toLowerCase() === 'refunded');
     }
-    // 'all' returns everything
 
     return { success: true, orders: list, count: list.length };
   }
@@ -60,5 +56,21 @@ function fromSnapshot(snap, fn, args, user) {
     return snap;
   }
 
-  return null; // fall through to live GAS
+  return null;
 }
+
+function coverage(snap) {
+  return {
+    orders: (snap.orders || []).length,
+    items: (snap.items || []).length,
+    users: (snap.users || []).length,
+    today: snap.today || null
+  };
+}
+
+function normDate(d) {
+  if (!d) return '';
+  return String(d).slice(0, 10);
+}
+
+module.exports = { fromSnapshot, coverage, normDate };
