@@ -835,37 +835,40 @@ function renderKanban() {
 
   /* ── Actions ─────────────────────────────────────────────────────────── */
 
-  async function doDecision(toStage, decisionOrOutcome) {
-    const o = state.selected;
-    if (!o) return;
+async function doDecision(toStage, decisionOrOutcome) {
+  const o = state.selected;
+  if (!o) return;
+
+  // Optimistic UI update
+  const oldStage = o.currentStage;
+  o.currentStage = toStage;
+  o.overallStatus = (toStage === 'DISPATCHED') ? 'Completed' : 
+                    (toStage === 'REFUNDED') ? 'Refunded' : o.overallStatus;
+  renderDetail(o);
+  toast('Updating…', 'ok');
+
+  setLoading(true);
+  try {
     const notes = ($('#action-notes') && $('#action-notes').value) || '';
     const related = ($('#action-related') && $('#action-related').value) || '';
+    const res = await rpc('recordStageEvent', [
+      o.orderId, toStage, decisionOrOutcome || '', notes, related
+    ], 45000);
 
-    const label = stageLabel(toStage) + (decisionOrOutcome ? ' (' + decisionOrOutcome + ')' : '');
-    if (!confirm('Confirm: move to ' + label + '?')) return;
-
-    setLoading(true);
-    try {
-      const res = await rpc('recordStageEvent', [
-        o.orderId,
-        toStage,
-        decisionOrOutcome || '',
-        notes,
-        related
-      ], 45000);
-
-      if (!res || !res.success) {
-        toast((res && res.error) || 'Action failed', 'error');
-        return;
-      }
-      toast('Updated → ' + stageLabel(toStage), 'ok');
-      await refresh(true);
-      // reload detail
-      await openDetail(o.orderId);
-    } finally {
-      setLoading(false);
+    if (!res || !res.success) {
+      // Revert on failure
+      o.currentStage = oldStage;
+      renderDetail(o);
+      toast((res && res.error) || 'Failed', 'error');
+      return;
     }
+    toast('Updated → ' + stageLabel(toStage), 'ok');
+    await refresh(true);          // silent background refresh
+    await openDetail(o.orderId);  // reload fresh
+  } finally {
+    setLoading(false);
   }
+}
 
   async function saveCourier() {
     const o = state.selected;
