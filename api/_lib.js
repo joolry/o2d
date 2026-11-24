@@ -9,10 +9,10 @@ const isRead = (fn) => /^(get|validate)/.test(fn);
 const ALLOWED = new Set([
   'login', 'validateSession',
   'getBootData', 'getOrders', 'getOrderDetail',
-  'getSteps', 'getConfig', 'getSnapshot',
-  'markBoxDone', 'updateCourier', 'updateOrder',
-  'syncFromShopify', 'clientForceSync',
-  'getActivityLog', 'createManualOrder'
+  'getStages', 'getConfig', 'getSnapshot',
+  'recordStageEvent', 'updateCourier', 'updateOrder',
+  'createManualOrder', 'getActivityLog', 'getOrderEvents',
+  'clientForceSync', 'sendWhatsApp'
 ]);
 
 const SNAPSHOT_READS = new Set([
