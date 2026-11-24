@@ -117,6 +117,7 @@
           <div class="top-search-wrap">
             <input id="global-search" type="search" placeholder="Search orders…" onkeydown="if(event.key==='Enter')App.globalSearch()" />
           </div>
+          <button class="icon-btn" onclick="App.clearCache()" title="Clear Cache & Force Sync" id="btn-clear-cache" style="font-size:13px;padding:0 10px;">Clear Cache</button>
           <span class="auto-badge" id="auto-badge">● Live</span>
           <button class="icon-btn" onclick="App.toggleTheme()" title="Theme">◐</button>
           <button class="icon-btn" onclick="App.refresh()" title="Refresh" id="btn-refresh">↻</button>
