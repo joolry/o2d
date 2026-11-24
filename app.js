@@ -60,10 +60,10 @@
     return isAdmin() || (state.allowedStages && state.allowedStages.length > 0);
   }
 
-  function isOpen(o) {
-    const s = String(o.overallStatus || '').toLowerCase();
-    return s !== 'completed' && s !== 'refunded' && s !== 'cancelled';
-  }
+function isOpen(o) {
+  const s = String(o.overallStatus || '').toLowerCase();
+  return s !== 'completed' && s !== 'refunded' && s !== 'cancelled' && s !== 'closed' && s !== 'done';
+}
 
   function isTerminal(stage) {
     return ['DISPATCHED', 'REFUNDED', 'CANCELLED'].indexOf(String(stage || '').toUpperCase()) !== -1;
@@ -923,7 +923,7 @@ function renderKanban() {
     toggleSidebar, toggleCollapse, toggleTheme, globalSearch,
     openDetail, closeDetail, doDecision,
     saveCourier, saveOrderEdit, onCourierChange,
-    renderKanban, renderFmsSheet, renderRefund
+    renderKanban, renderFmsSheet, renderRefund, clearCache
   };
 
   // Init
@@ -932,3 +932,35 @@ function renderKanban() {
     boot();
   });
 })();
+
+
+
+async function clearCache() {
+  if (!confirm('Cache clear + full sync? Data thodi der mein fresh aayega.')) return;
+  setLoading(true);
+  toast('Clearing cache…', 'ok');
+  try {
+    // Force sync (secret Vercel env se aata hai, yahan relative call)
+    const r = await fetch('/api/sync?force=1&secret=' + encodeURIComponent(window.SYNC_SECRET || ''), {
+      method: 'GET',
+      cache: 'no-store'
+    });
+    const data = await r.json();
+    if (data && data.success) {
+      toast('Cache cleared. Refreshing…', 'ok');
+    } else {
+      toast('Sync triggered (or check secret)', 'ok');
+    }
+    await refresh(false);
+  } catch (e) {
+    toast('Clear request sent. Refresh manually if needed.', 'ok');
+    await refresh(false);
+  } finally {
+    setLoading(false);
+  }
+}
+
+
+
+
+
