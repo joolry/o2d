@@ -493,34 +493,39 @@
 
   /* ── Kanban ──────────────────────────────────────────────────────────── */
 
-  function renderKanban() {
-    const filter = ($('#kanban-filter') && $('#kanban-filter').value) || 'open';
-    const q = ($('#kanban-search') && $('#kanban-search').value) || '';
-    let list = filteredOrders(filter === 'mine' ? 'mine' : filter, q);
+function renderKanban() {
+  const filter = ($('#kanban-filter') && $('#kanban-filter').value) || 'open';
+  const q = ($('#kanban-search') && $('#kanban-search').value) || '';
+  let list = filteredOrders(filter === 'mine' ? 'mine' : filter, q);
 
-    const board = $('#kanban-board');
-    if (!board) return;
+  const board = $('#kanban-board');
+  if (!board) return;
 
-    board.innerHTML = KANBAN_STAGES.map(stage => {
-      const colOrders = list.filter(o => String(o.currentStage || '').toUpperCase() === stage);
-      return `
-        <div class="kanban-col">
-          <div class="kanban-col-head">
-            <span>${esc(stageLabel(stage))}</span>
-            <span class="count">${colOrders.length}</span>
-          </div>
-          <div class="kanban-cards">
-            ${colOrders.map(o => `
-              <div class="kanban-card ${delayVal(o) > 0 ? 'late' : ''}" onclick="App.openDetail('${esc(o.orderId)}')">
-                <div class="kc-id">${esc(o.orderId)}</div>
-                <div class="kc-name">${esc(o.clientName || '')}</div>
-                <div class="kc-meta">${money(o.orderValue)} · ${esc(o.city || '')}</div>
-                ${delayVal(o) > 0 ? `<div class="kc-late">+${delayVal(o).toFixed(0)}h</div>` : ''}
-              </div>`).join('') || '<div class="empty-hint small">Empty</div>'}
-          </div>
-        </div>`;
-    }).join('');
-  }
+  board.innerHTML = KANBAN_STAGES.map(stage => {
+    const colOrders = list.filter(o => {
+      let s = String(o.currentStage || '').toUpperCase().trim();
+      // Fallback: empty or unknown stage → treat as STOCK_CHECK
+      if (!s || KANBAN_STAGES.indexOf(s) === -1) s = 'STOCK_CHECK';
+      return s === stage;
+    });
+    return `
+      <div class="kanban-col">
+        <div class="kanban-col-head">
+          <span>${esc(stageLabel(stage))}</span>
+          <span class="count">${colOrders.length}</span>
+        </div>
+        <div class="kanban-cards">
+          ${colOrders.map(o => `
+            <div class="kanban-card ${delayVal(o) > 0 ? 'late' : ''}" onclick="App.openDetail('${esc(o.orderId)}')">
+              <div class="kc-id">${esc(o.orderId)}</div>
+              <div class="kc-name">${esc(o.clientName || '')}</div>
+              <div class="kc-meta">${money(o.orderValue)} · ${esc(o.city || '')}</div>
+              ${delayVal(o) > 0 ? `<div class="kc-late">+${delayVal(o).toFixed(0)}h</div>` : ''}
+            </div>`).join('') || '<div class="empty-hint small">Empty</div>'}
+        </div>
+      </div>`;
+  }).join('');
+}
 
   /* ── Due / Late ──────────────────────────────────────────────────────── */
 
