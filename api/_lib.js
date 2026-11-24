@@ -17,7 +17,8 @@ const ALLOWED = new Set([
 
 const SNAPSHOT_READS = new Set([
   'getBootData', 'getOrders', 'getOrderDetail',
-  'getSteps', 'getConfig', 'getSnapshot'
+  'getStages', 'getSteps', 'getConfig', 'getSnapshot',
+  'getOrderEvents'
 ]);
 
 const b64 = (b) => Buffer.from(b).toString('base64url');
