@@ -1194,3 +1194,175 @@ button, input, select { font-family: inherit; }
   .view { padding: 12px; }
   .login-card { margin: 16px; padding: 28px 20px; }
 }
+
+
+
+/* ═══════════════════════════════════════════════════════════════
+   JOOLRY Order FMS — Clean Interface Polish (no logic change)
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+  --shadow-hover: 0 4px 16px rgba(0,0,0,.08);
+}
+
+/* Stats */
+.stats-row {
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  padding: 18px 16px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: transform .15s, box-shadow .15s;
+}
+.stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+}
+.stat-n {
+  font-size: 32px;
+  letter-spacing: -0.02em;
+}
+.stat-l {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Cards */
+.dash-grid {
+  gap: 16px;
+}
+.card {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+.card-head h3 {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  margin-bottom: 14px;
+}
+
+/* Mini lists (Needs Attention / Recent) */
+.mini-row {
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+  transition: background .12s;
+}
+.mini-row:hover {
+  background: var(--surface-2);
+}
+.mini-id {
+  font-weight: 600;
+  color: var(--text);
+}
+.mini-name {
+  font-weight: 500;
+}
+
+/* Work cards */
+.work-card {
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  transition: all .15s;
+}
+.work-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+  border-color: var(--primary);
+}
+.wc-id {
+  font-size: 14px;
+}
+.wc-stage {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.wc-name {
+  font-size: 15px;
+  margin: 4px 0;
+}
+.wc-meta {
+  font-size: 12.5px;
+}
+
+/* Kanban */
+.kanban-col {
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.kanban-col-head {
+  padding: 12px 14px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.kanban-card {
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: all .12s;
+}
+.kanban-card:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow);
+}
+
+/* Topbar */
+.topbar {
+  backdrop-filter: blur(8px);
+  background: rgba(255,255,255,.85);
+}
+[data-theme="dark"] .topbar {
+  background: rgba(15,18,24,.85);
+}
+
+/* Buttons */
+.btn {
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.btn.primary {
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+
+/* Sidebar polish */
+.sidebar {
+  box-shadow: 2px 0 12px rgba(0,0,0,.04);
+}
+.nav-btn.active {
+  font-weight: 600;
+}
+
+/* Greeting */
+.greeting {
+  font-size: 26px;
+  margin-bottom: 18px;
+  letter-spacing: -0.01em;
+}
+
+/* Empty states */
+.empty-hint {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 12px;
+  opacity: 0.8;
+}
+
+/* Responsive tightening */
+@media (max-width: 1100px) {
+  .dash-grid { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+}
